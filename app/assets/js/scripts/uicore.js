@@ -37,60 +37,65 @@ webFrame.setVisualZoomLevelLimits(1, 1)
 
 // Initialize auto updates in production environments.
 let updateCheckListener
-if(!isDev){
-    ipcRenderer.on('autoUpdateNotification', (event, arg, info) => {
-        switch(arg){
-            case 'checking-for-update':
-                loggerAutoUpdater.info('Checking for update..')
-                settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.checkingForUpdateButton'), true)
-                break
-            case 'update-available':
-                loggerAutoUpdater.info('New update available', info.version)
-                
-                if(process.platform === 'darwin'){
-                    info.darwindownload = `https://github.com/dscalzi/HeliosLauncher/releases/download/v${info.version}/Helios-Launcher-setup-${info.version}${process.arch === 'arm64' ? '-arm64' : '-x64'}.dmg`
-                    showUpdateUI(info)
-                }
-                
-                populateSettingsUpdateInformation(info)
-                break
-            case 'update-downloaded':
-                loggerAutoUpdater.info('Update ' + info.version + ' ready to be installed.')
-                settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.installNowButton'), false, () => {
-                    if(!isDev){
-                        ipcRenderer.send('autoUpdateAction', 'installUpdateNow')
-                    }
-                })
+ipcRenderer.on('autoUpdateNotification', (event, arg, info) => {
+    switch(arg){
+        case 'checking-for-update':
+            loggerAutoUpdater.info('Checking for update..')
+            settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.checkingForUpdateButton'), true)
+            break
+        case 'update-available':
+            loggerAutoUpdater.info('New update available', info.version)
+            
+            if(process.platform === 'darwin'){
+                info.darwindownload = `https://github.com/TeamStellive/stellalauncher/releases/download/v${info.version}/StellaLauncher-Setup-${info.version}-${process.arch}.dmg`
                 showUpdateUI(info)
-                break
-            case 'update-not-available':
-                loggerAutoUpdater.info('No new update found.')
-                settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.checkForUpdatesButton'))
-                break
-            case 'ready':
+            }
+            
+            populateSettingsUpdateInformation(info)
+            break
+        case 'update-downloaded':
+            loggerAutoUpdater.info('Update ' + info.version + ' ready to be installed.')
+            settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.installNowButton'), false, () => {
+                if(!isDev){
+                    ipcRenderer.send('autoUpdateAction', 'installUpdateNow')
+                }
+            })
+            showUpdateUI(info)
+            break
+        case 'update-not-available':
+            loggerAutoUpdater.info('No new update found.')
+            settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.checkForUpdatesButton'))
+            break
+        case 'ready':
+            if(!isDev){
                 updateCheckListener = setInterval(() => {
                     ipcRenderer.send('autoUpdateAction', 'checkForUpdate')
                 }, 1800000)
                 ipcRenderer.send('autoUpdateAction', 'checkForUpdate')
-                break
-            case 'realerror':
-                if(info != null && info.code != null){
-                    if(info.code === 'ERR_UPDATER_INVALID_RELEASE_FEED'){
-                        loggerAutoUpdater.info('No suitable releases found.')
-                    } else if(info.code === 'ERR_XML_MISSED_ELEMENT'){
-                        loggerAutoUpdater.info('No releases found.')
-                    } else {
-                        loggerAutoUpdater.error('Error during update check..', info)
-                        loggerAutoUpdater.debug('Error Code:', info.code)
-                    }
-                }
-                break
-            default:
-                loggerAutoUpdater.info('Unknown argument', arg)
-                break
-        }
-    })
-}
+            }
+            break
+        case 'realerror':
+            settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.checkForUpdatesButton'))
+            if(info == null){
+                loggerAutoUpdater.error('Unknown error during update check.')
+            } else if(info.code === 'ERR_UPDATER_INVALID_RELEASE_FEED'){
+                loggerAutoUpdater.info('No suitable releases found.')
+            } else if(info.code === 'ERR_XML_MISSED_ELEMENT' || info.code === 'ERR_UPDATER_NO_PUBLISHED_VERSIONS'){
+                loggerAutoUpdater.info('No releases found.')
+            } else if(info.code === 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND'){
+                loggerAutoUpdater.info('No latest release found.', info.message)
+            } else if(info.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND'){
+                loggerAutoUpdater.info('No update metadata found in the latest release.', info.message)
+            } else {
+                loggerAutoUpdater.error('Error during update check..', info)
+                loggerAutoUpdater.debug('Error Code:', info.code)
+            }
+            break
+        default:
+            loggerAutoUpdater.info('Unknown argument', arg)
+            break
+    }
+})
 
 /**
  * Send a notification to the main process changing the value of

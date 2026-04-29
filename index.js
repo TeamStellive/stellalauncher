@@ -6,6 +6,7 @@ const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron')
 const autoUpdater                       = require('electron-updater').autoUpdater
 const ejse                              = require('ejs-electron')
 const fs                                = require('fs')
+const https                             = require('https')
 const isDev                             = require('./app/assets/js/isdev')
 const path                              = require('path')
 const semver                            = require('semver')
@@ -17,6 +18,72 @@ const LangLoader                        = require('./app/assets/js/langloader')
 LangLoader.setupLanguage()
 
 // Setup auto updater.
+const AUTO_UPDATE_REPOSITORY = {
+    owner: 'TeamStellive',
+    repo: 'stellalauncher'
+}
+
+function fetchUrlText(url) {
+    return new Promise((resolve, reject) => {
+        const req = https.get(url, {
+            headers: {
+                'User-Agent': 'Stella Launcher'
+            }
+        }, res => {
+            if(res.statusCode >= 400){
+                res.resume()
+                const err = new Error(`HTTP ${res.statusCode} while fetching ${url}`)
+                err.statusCode = res.statusCode
+                reject(err)
+                return
+            }
+
+            let body = ''
+            res.setEncoding('utf8')
+            res.on('data', chunk => {
+                body += chunk
+            })
+            res.on('end', () => {
+                resolve(body)
+            })
+        })
+
+        req.on('error', reject)
+        req.setTimeout(10000, () => {
+            req.destroy(new Error(`Timed out while fetching ${url}`))
+        })
+    })
+}
+
+async function hasApplicablePublishedRelease() {
+    const { owner, repo } = AUTO_UPDATE_REPOSITORY
+    const url = autoUpdater.allowPrerelease
+        ? `https://github.com/${owner}/${repo}/releases.atom`
+        : `https://api.github.com/repos/${owner}/${repo}/releases/latest`
+
+    try {
+        const body = await fetchUrlText(url)
+        return autoUpdater.allowPrerelease ? /<entry(?:\s|>)/.test(body) : body.length > 0
+    } catch(err) {
+        if(err.statusCode === 404){
+            return false
+        }
+        return true
+    }
+}
+
+function normalizeAutoUpdaterError(err) {
+    if(err == null){
+        return null
+    }
+    return {
+        name: err.name,
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+    }
+}
+
 function initAutoUpdater(event, data) {
 
     if(data){
@@ -28,6 +95,7 @@ function initAutoUpdater(event, data) {
     
     if(isDev){
         autoUpdater.autoInstallOnAppQuit = false
+        autoUpdater.forceDevUpdateConfig = true
         autoUpdater.updateConfigPath = path.join(__dirname, 'dev-app-update.yml')
     }
     if(process.platform === 'darwin'){
@@ -46,7 +114,7 @@ function initAutoUpdater(event, data) {
         event.sender.send('autoUpdateNotification', 'checking-for-update')
     })
     autoUpdater.on('error', (err) => {
-        event.sender.send('autoUpdateNotification', 'realerror', err)
+        event.sender.send('autoUpdateNotification', 'realerror', normalizeAutoUpdaterError(err))
     }) 
 }
 
@@ -59,9 +127,20 @@ ipcMain.on('autoUpdateAction', (event, arg, data) => {
             event.sender.send('autoUpdateNotification', 'ready')
             break
         case 'checkForUpdate':
-            autoUpdater.checkForUpdates()
+            hasApplicablePublishedRelease()
+                .then(hasRelease => {
+                    if(!hasRelease){
+                        event.sender.send('autoUpdateNotification', 'realerror', {
+                            name: 'NoPublishedVersionsError',
+                            message: 'No published versions on GitHub',
+                            code: 'ERR_UPDATER_NO_PUBLISHED_VERSIONS'
+                        })
+                        return null
+                    }
+                    return autoUpdater.checkForUpdates()
+                })
                 .catch(err => {
-                    event.sender.send('autoUpdateNotification', 'realerror', err)
+                    event.sender.send('autoUpdateNotification', 'realerror', normalizeAutoUpdaterError(err))
                 })
             break
         case 'allowPrereleaseChange':
