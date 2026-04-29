@@ -3185,6 +3185,7 @@ input:checked + .toggleSwitchSlider:before {
     letter-spacing: 1px;
     font-weight: bold;
     text-shadow: 0px 0px 0px #bebcbb;
+    white-space: nowrap;
 }
 
 /* Divider used on the bottom of the landing view. */

@@ -23,6 +23,8 @@ const AUTO_UPDATE_REPOSITORY = {
     repo: 'stellalauncher'
 }
 
+let downloadedUpdateFile = null
+
 function fetchUrlText(url) {
     return new Promise((resolve, reject) => {
         const req = https.get(url, {
@@ -105,6 +107,7 @@ function initAutoUpdater(event, data) {
         event.sender.send('autoUpdateNotification', 'update-available', info)
     })
     autoUpdater.on('update-downloaded', (info) => {
+        downloadedUpdateFile = info.downloadedFile
         event.sender.send('autoUpdateNotification', 'update-downloaded', info)
     })
     autoUpdater.on('update-not-available', (info) => {
@@ -157,6 +160,23 @@ ipcMain.on('autoUpdateAction', (event, arg, data) => {
             break
         case 'installUpdateNow':
             console.log('Installing downloaded update.')
+            if(isDev && downloadedUpdateFile != null && fs.existsSync(downloadedUpdateFile)){
+                shell.openPath(downloadedUpdateFile)
+                    .then(err => {
+                        if(err){
+                            event.sender.send('autoUpdateNotification', 'realerror', {
+                                name: 'InstallerLaunchError',
+                                message: err
+                            })
+                        } else {
+                            app.quit()
+                        }
+                    })
+                    .catch(err => {
+                        event.sender.send('autoUpdateNotification', 'realerror', normalizeAutoUpdaterError(err))
+                    })
+                break
+            }
             autoUpdater.quitAndInstall(false, true)
             break
         default:
