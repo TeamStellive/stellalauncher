@@ -20,9 +20,14 @@ publish:
   releaseType: release
 win:
   target:
-    - target: portable
+    - target: nsis
       arch:
         - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
 
 mac:
   target:
