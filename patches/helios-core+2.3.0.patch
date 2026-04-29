@@ -46,72 +46,42 @@ index d2d927f..08d9cc1 100644
          return this.mavenComponents != null;
      }
 diff --git a/node_modules/helios-core/dist/dl/DownloadEngine.js b/node_modules/helios-core/dist/dl/DownloadEngine.js
-index 922cd1a..7598882 100644
+index 922cd1a..71443ac 100644
 --- a/node_modules/helios-core/dist/dl/DownloadEngine.js
 +++ b/node_modules/helios-core/dist/dl/DownloadEngine.js
-@@ -65,16 +65,18 @@ async function downloadQueue(assets, onProgress) {
+@@ -65,7 +65,8 @@ async function downloadQueue(assets, onProgress) {
      return receivedTotals;
  }
  async function downloadFile(url, path, onProgress) {
 -    await (0, fs_extra_1.ensureDir)((0, path_1.dirname)(path));
-+    // Windows 드라이브 문자 보존하며 콜론 변환
-+    const parsed = (0, path_1.parse)(path);
-+    const safePath = parsed.root ? parsed.root + path.slice(parsed.root.length).replace(/:/g, '_') : path.replace(/:/g, '_');
-+    
++    const safePath = getFilesystemSafePath(path);
 +    await (0, fs_extra_1.ensureDir)((0, path_1.dirname)(safePath));
      const MAX_RETRIES = 10;
--    let fileWriterStream = null; // The write stream.
--    let retryCount = 0; // The number of retries attempted.
--    let error = null; // The caught error.
--    let retry = false; // Should we retry.
--    let rethrow = false; // Should we throw an error.
--    // Got's streaming retry API is nonexistant and their "example" is egregious.
--    // To use their "api" you need to commit yourself to recursive callback hell.
--    // No thank you, I prefer this simpler, non error-prone logic.
-+    let fileWriterStream = null;
-+    let retryCount = 0;
-+    let error = null;
-+    let retry = false;
-+    let rethrow = false;
-+
-     do {
-         retry = false;
-         rethrow = false;
-@@ -83,7 +85,9 @@ async function downloadFile(url, path, onProgress) {
+     let fileWriterStream = null; // The write stream.
+     let retryCount = 0; // The number of retries attempted.
+@@ -83,7 +84,7 @@ async function downloadFile(url, path, onProgress) {
          }
          try {
              const downloadStream = got_1.default.stream(url);
 -            fileWriterStream = (0, fs_1.createWriteStream)(path);
-+            // 3. 여기서도 safePath를 사용해야 파일이 정상적으로 써집니다.
 +            fileWriterStream = (0, fs_1.createWriteStream)(safePath);
-+            
              if (onProgress) {
                  downloadStream.on('downloadProgress', (progress) => onProgress(progress));
              }
-@@ -93,22 +97,19 @@ async function downloadFile(url, path, onProgress) {
-             error = err;
-             retryCount++;
-             rethrow = true;
--            // For now, only retry timeouts.
-             retry = retryCount <= MAX_RETRIES && retryableError(error);
-             if (fileWriterStream) {
-                 fileWriterStream.destroy();
-             }
-             if (onProgress && retry) {
--                // Reset progress on this asset. since we're going to retry.
-                 onProgress({ transferred: 0, percent: 0, total: 0 });
-             }
-             if (retry) {
--                // Wait one second before retrying.
--                // This can become an exponential backoff, but I see no need for that right now.
-                 await (0, NodeUtil_1.sleep)(1000);
-             }
-         }
-     } while (retry);
-+
-     if (rethrow && error) {
-         if (retryCount > MAX_RETRIES) {
-             log.error(`Maximum retries attempted for ${url}. Rethrowing exception.`);
+@@ -119,6 +120,13 @@ async function downloadFile(url, path, onProgress) {
+         throw error;
+     }
+ }
++function getFilesystemSafePath(path) {
++    if (process.platform !== 'win32' || !path) {
++        return path;
++    }
++    const parsed = (0, path_1.parse)(path);
++    return parsed.root ? parsed.root + path.slice(parsed.root.length).replace(/:/g, '_') : path.replace(/:/g, '_');
++}
+ function retryableError(error) {
+     if (error instanceof got_1.RequestError) {
+         // error.name === 'RequestError' means server did not respond.
 diff --git a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js b/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
 index f09b6b4..7e1eed9 100644
 --- a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
@@ -166,3 +136,21 @@ index 89fe157..8247234 100644
              if (currentPercent !== nextPercent) {
                  currentPercent = nextPercent;
                  process.send({ response: 'downloadProgress', percent: currentPercent });
+diff --git a/node_modules/helios-core/dist/dl/receivers/ReceiverExecutor.js b/node_modules/helios-core/dist/dl/receivers/ReceiverExecutor.js
+index 5f00414..fe3147e 100644
+--- a/node_modules/helios-core/dist/dl/receivers/ReceiverExecutor.js
++++ b/node_modules/helios-core/dist/dl/receivers/ReceiverExecutor.js
+@@ -39,7 +39,12 @@ process.on('message', async (message) => {
+         // Our winston logger only outputs to stdout, so this works.
+         // Write directly to stdout and await stdout flush.
+         (0, fs_1.writeSync)(process.stdout.fd, 'Error now being propagated back to the transmitter.');
+-        (0, fs_1.fsyncSync)(process.stdout.fd);
++        try {
++            (0, fs_1.fsyncSync)(process.stdout.fd);
++        }
++        catch (flushErr) {
++            log.debug('Unable to fsync stdout before propagating receiver error.', flushErr);
++        }
+         process.send({
+             response: 'error',
+             displayable
