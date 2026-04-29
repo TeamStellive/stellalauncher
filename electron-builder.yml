@@ -13,6 +13,10 @@ files:
 extraResources:
   - 'libraries'
 
+publish:
+  provider: github
+  releaseType: draft
+
 # Windows Configuration
 win: 
   target: 

@@ -1,0 +1,168 @@
+diff --git a/node_modules/helios-core/dist/common/distribution/DistributionFactory.js b/node_modules/helios-core/dist/common/distribution/DistributionFactory.js
+index d2d927f..08d9cc1 100644
+--- a/node_modules/helios-core/dist/common/distribution/DistributionFactory.js
++++ b/node_modules/helios-core/dist/common/distribution/DistributionFactory.js
+@@ -188,7 +188,7 @@ class HeliosModule {
+     resolveLocalPath(commonDir, instanceDir) {
+         // Version Manifests have a pre-determined path.
+         if (this.rawModule.type === helios_distribution_types_1.Type.VersionManifest) {
+-            return (0, path_1.join)(commonDir, 'versions', this.rawModule.id, `${this.rawModule.id}.json`);
++            return this.sanitizeLocalPath((0, path_1.join)(commonDir, 'versions', this.rawModule.id, `${this.rawModule.id}.json`));
+         }
+         const relativePath = this.rawModule.artifact.path ?? MavenUtil_1.MavenUtil.mavenComponentsAsNormalizedPath(this.mavenComponents.group, this.mavenComponents.artifact, this.mavenComponents.version, this.mavenComponents.classifier, this.mavenComponents.extension);
+         switch (this.rawModule.type) {
+@@ -197,18 +197,29 @@ class HeliosModule {
+             case helios_distribution_types_1.Type.ForgeHosted:
+             case helios_distribution_types_1.Type.Fabric:
+             case helios_distribution_types_1.Type.LiteLoader:
+-                return (0, path_1.join)(commonDir, 'libraries', relativePath);
++                return this.sanitizeLocalPath((0, path_1.join)(commonDir, 'libraries', relativePath));
+             case helios_distribution_types_1.Type.ForgeMod:
+             case helios_distribution_types_1.Type.LiteMod:
+                 // TODO Move to /mods/forge eventually..
+-                return (0, path_1.join)(commonDir, 'modstore', relativePath);
++                return this.sanitizeLocalPath((0, path_1.join)(commonDir, 'modstore', relativePath));
+             case helios_distribution_types_1.Type.FabricMod:
+-                return (0, path_1.join)(commonDir, 'mods', 'fabric', relativePath);
++                return this.sanitizeLocalPath((0, path_1.join)(commonDir, 'mods', 'fabric', relativePath));
+             case helios_distribution_types_1.Type.File:
+             default:
+-                return (0, path_1.join)(instanceDir, this.serverId, relativePath);
++                return this.sanitizeLocalPath((0, path_1.join)(instanceDir, this.serverId, relativePath));
+         }
+     }
++    sanitizeLocalPath(localPath) {
++        if (process.platform !== 'win32' || !localPath) {
++            return localPath;
++        }
++        const parsed = (0, path_1.parse)(localPath);
++        // 드라이브 문자 보존: C:\ 포함, 그 후 콜론만 변환
++        if (parsed.root) {
++            return parsed.root + localPath.slice(parsed.root.length).replace(/:/g, '_');
++        }
++        return localPath.replace(/:/g, '_');
++    }
+     hasMavenComponents() {
+         return this.mavenComponents != null;
+     }
+diff --git a/node_modules/helios-core/dist/dl/DownloadEngine.js b/node_modules/helios-core/dist/dl/DownloadEngine.js
+index 922cd1a..7598882 100644
+--- a/node_modules/helios-core/dist/dl/DownloadEngine.js
++++ b/node_modules/helios-core/dist/dl/DownloadEngine.js
+@@ -65,16 +65,18 @@ async function downloadQueue(assets, onProgress) {
+     return receivedTotals;
+ }
+ async function downloadFile(url, path, onProgress) {
+-    await (0, fs_extra_1.ensureDir)((0, path_1.dirname)(path));
++    // Windows 드라이브 문자 보존하며 콜론 변환
++    const parsed = (0, path_1.parse)(path);
++    const safePath = parsed.root ? parsed.root + path.slice(parsed.root.length).replace(/:/g, '_') : path.replace(/:/g, '_');
++    
++    await (0, fs_extra_1.ensureDir)((0, path_1.dirname)(safePath));
+     const MAX_RETRIES = 10;
+-    let fileWriterStream = null; // The write stream.
+-    let retryCount = 0; // The number of retries attempted.
+-    let error = null; // The caught error.
+-    let retry = false; // Should we retry.
+-    let rethrow = false; // Should we throw an error.
+-    // Got's streaming retry API is nonexistant and their "example" is egregious.
+-    // To use their "api" you need to commit yourself to recursive callback hell.
+-    // No thank you, I prefer this simpler, non error-prone logic.
++    let fileWriterStream = null;
++    let retryCount = 0;
++    let error = null;
++    let retry = false;
++    let rethrow = false;
++
+     do {
+         retry = false;
+         rethrow = false;
+@@ -83,7 +85,9 @@ async function downloadFile(url, path, onProgress) {
+         }
+         try {
+             const downloadStream = got_1.default.stream(url);
+-            fileWriterStream = (0, fs_1.createWriteStream)(path);
++            // 3. 여기서도 safePath를 사용해야 파일이 정상적으로 써집니다.
++            fileWriterStream = (0, fs_1.createWriteStream)(safePath);
++            
+             if (onProgress) {
+                 downloadStream.on('downloadProgress', (progress) => onProgress(progress));
+             }
+@@ -93,22 +97,19 @@ async function downloadFile(url, path, onProgress) {
+             error = err;
+             retryCount++;
+             rethrow = true;
+-            // For now, only retry timeouts.
+             retry = retryCount <= MAX_RETRIES && retryableError(error);
+             if (fileWriterStream) {
+                 fileWriterStream.destroy();
+             }
+             if (onProgress && retry) {
+-                // Reset progress on this asset. since we're going to retry.
+                 onProgress({ transferred: 0, percent: 0, total: 0 });
+             }
+             if (retry) {
+-                // Wait one second before retrying.
+-                // This can become an exponential backoff, but I see no need for that right now.
+                 await (0, NodeUtil_1.sleep)(1000);
+             }
+         }
+     } while (retry);
++
+     if (rethrow && error) {
+         if (retryCount > MAX_RETRIES) {
+             log.error(`Maximum retries attempted for ${url}. Rethrowing exception.`);
+diff --git a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js b/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
+index f09b6b4..7e1eed9 100644
+--- a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
++++ b/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
+@@ -76,7 +76,9 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+             return await this.loadVersionManifest(modLoaderModule);
+         }
+         else {
+-            const zip = new node_stream_zip_1.default.async({ file: modLoaderModule.getPath() });
++            // 경로에서 콜론을 언더바로 변환 (Windows 파일 시스템 제약)
++            const safePath = this.sanitizePathForFS(modLoaderModule.getPath());
++            const zip = new node_stream_zip_1.default.async({ file: safePath });
+             try {
+                 const data = JSON.parse((await zip.entryData('version.json')).toString('utf8'));
+                 const writePath = (0, FileUtils_1.getVersionJsonPath)(this.commonDir, data.id);
+@@ -89,12 +91,24 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+             }
+         }
+     }
++    sanitizePathForFS(filePath) {
++        if (process.platform !== 'win32' || !filePath) {
++            return filePath;
++        }
++        const parsed = (0, path_1.parse)(filePath);
++        if (parsed.root) {
++            return parsed.root + filePath.slice(parsed.root.length).replace(/:/g, '_');
++        }
++        return filePath.replace(/:/g, '_');
++    }
+     async loadVersionManifest(modLoaderModule) {
+         const versionManifstModule = modLoaderModule.subModules.find(({ rawModule: { type } }) => type === helios_distribution_types_1.Type.VersionManifest);
+         if (versionManifstModule == null) {
+             throw new AssetGuardError_1.AssetGuardError('No mod loader version manifest module found!');
+         }
+-        return await (0, fs_extra_1.readJson)(versionManifstModule.getPath(), 'utf-8');
++        // 드라이브 문자 보존하면서 콜론 변환
++        const safePath = this.sanitizePathForFS(versionManifstModule.getPath());
++        return await (0, fs_extra_1.readJson)(safePath, 'utf-8');
+     }
+     // TODO Move this to a util maybe
+     static isForgeGradle3(mcVersion, forgeVersion) {
+diff --git a/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js b/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js
+index 89fe157..8247234 100644
+--- a/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js
++++ b/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js
+@@ -95,7 +95,7 @@ class FullRepairReceiver {
+         // Reduce load on IPC channel by sending only whole numbers.
+         let currentPercent = 0;
+         const receivedEach = await (0, DownloadEngine_1.downloadQueue)(this.assets, received => {
+-            const nextPercent = Math.trunc((received / expectedTotalSize) * 100);
++            const nextPercent = expectedTotalSize > 0 ? Math.trunc((received / expectedTotalSize) * 100) : 0;
+             if (currentPercent !== nextPercent) {
+                 currentPercent = nextPercent;
+                 process.send({ response: 'downloadProgress', percent: currentPercent });
