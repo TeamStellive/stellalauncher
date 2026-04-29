@@ -6,6 +6,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -24,12 +27,15 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -38,7 +44,7 @@ jobs:
         run: npm ci
 
       - name: Build Electron app
-        run: npm run dist -- --${{ matrix.platform }}
+        run: npm run dist -- --${{ matrix.platform }} --publish never
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
