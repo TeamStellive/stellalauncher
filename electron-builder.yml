@@ -15,8 +15,9 @@ extraResources:
 
 publish:
   provider: github
+  owner: TeamStellive
+  repo: stellalauncher
   releaseType: release
-
 win:
   target:
     - target: portable
