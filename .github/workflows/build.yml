@@ -1,4 +1,4 @@
-name: Build Electron
+name: Build and Release Electron
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -20,20 +20,26 @@ jobs:
             artifact: windows
             files: |
               dist/*.exe
+              dist/*.yml
 
           - os: macos-latest
             platform: mac
             artifact: macos
             files: |
               dist/*.dmg
+              dist/*.yml
 
           - os: ubuntu-latest
             platform: linux
             artifact: linux
             files: |
               dist/*.AppImage
+              dist/*.yml
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
@@ -49,9 +55,9 @@ jobs:
         run: npm ci
 
       - name: Build Electron app
-        run: npm run dist -- --${{ matrix.platform }} --publish never
+        run: npm run dist -- --${{ matrix.platform }} --publish always
 
-      - name: Upload installer only
+      - name: Upload artifact backup
         uses: actions/upload-artifact@v4
         with:
           name: stellalauncher-${{ matrix.artifact }}

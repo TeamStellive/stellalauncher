@@ -13,7 +13,9 @@ files:
 extraResources:
   - libraries
 
-publish: null
+publish:
+  provider: github
+  releaseType: release
 
 win:
   target:
