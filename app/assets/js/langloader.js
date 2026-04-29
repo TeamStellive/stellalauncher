@@ -34,7 +34,8 @@ exports.queryEJS = function(id, placeHolders){
 
 exports.setupLanguage = function(){
     // Load Language Files
-    exports.loadLanguage('en_US')
+    exports.loadLanguage('ko_KR')
+    // exports.loadLanguage('en_US')
     // Uncomment this when translations are ready
     //exports.loadLanguage('xx_XX')
 

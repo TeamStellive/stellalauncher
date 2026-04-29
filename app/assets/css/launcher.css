@@ -3292,9 +3292,10 @@ input:checked + .toggleSwitchSlider:before {
 /* Non essential service title text. */
 #mojangStatusNETitle {
     font-size: 10px;
-    padding: 0px 3px;
+    padding: 0 3px;
     text-align: center;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 /* Wrapper container for mojang service information. */

@@ -2,6 +2,9 @@
  * Script for landing.ejs
  */
 // Requirements
+const neoForgeChildProcess     = require('child_process')
+const neoForgeFS               = require('fs-extra')
+const nodePath                = require('path')
 const { URL }                 = require('url')
 const {
     MojangRestAPI,
@@ -10,13 +13,18 @@ const {
 const {
     RestResponseStatus,
     isDisplayableError,
-    validateLocalFile
+    validateLocalFile,
+    getMojangOS,
+    isLibraryCompatible
 }                             = require('helios-core/common')
 const {
     FullRepair,
     DistributionIndexProcessor,
     MojangIndexProcessor,
-    downloadFile
+    HashAlgo,
+    downloadFile,
+    downloadQueue,
+    getExpectedDownloadSize
 }                             = require('helios-core/dl')
 const {
     validateSelectedJvm,
@@ -28,6 +36,7 @@ const {
 }                             = require('helios-core/java')
 
 // Internal Requirements
+const LandingAuthManager      = require('./assets/js/authmanager')
 const DiscordWrapper          = require('./assets/js/discordwrapper')
 const ProcessBuilder          = require('./assets/js/processbuilder')
 
@@ -46,7 +55,7 @@ const loggerLanding = LoggerUtil.getLogger('Landing')
 
 /**
  * Show/hide the loading area.
- * 
+ *
  * @param {boolean} loading True if the loading area should be shown, otherwise false.
  */
 function toggleLaunchArea(loading){
@@ -61,7 +70,7 @@ function toggleLaunchArea(loading){
 
 /**
  * Set the details text of the loading area.
- * 
+ *
  * @param {string} details The new text for the loading details.
  */
 function setLaunchDetails(details){
@@ -70,7 +79,7 @@ function setLaunchDetails(details){
 
 /**
  * Set the value of the loading progress bar and display that value.
- * 
+ *
  * @param {number} percent Percentage (0-100)
  */
 function setLaunchPercentage(percent){
@@ -81,7 +90,7 @@ function setLaunchPercentage(percent){
 
 /**
  * Set the value of the OS progress bar and display that on the UI.
- * 
+ *
  * @param {number} percent Percentage (0-100)
  */
 function setDownloadPercentage(percent){
@@ -91,7 +100,7 @@ function setDownloadPercentage(percent){
 
 /**
  * Enable or disable the launch button.
- * 
+ *
  * @param {boolean} val True to enable, false to disable.
  */
 function setLaunchEnabled(val){
@@ -192,7 +201,7 @@ const refreshMojangStatuses = async function(){
         loggerLanding.warn('Unable to refresh Mojang service status.')
         statuses = MojangRestAPI.getDefaultStatuses()
     }
-    
+
     greenCount = 0
     greyCount = 0
 
@@ -229,7 +238,7 @@ const refreshMojangStatuses = async function(){
             status = 'green'
         }
     }
-    
+
     document.getElementById('mojangStatusEssentialContainer').innerHTML = tooltipEssentialHTML
     document.getElementById('mojangStatusNonEssentialContainer').innerHTML = tooltipNonEssentialHTML
     document.getElementById('mojang_status_icon').style.color = MojangRestAPI.statusToHex(status)
@@ -263,7 +272,7 @@ const refreshServerStatus = async (fade = false) => {
         document.getElementById('landingPlayerLabel').innerHTML = pLabel
         document.getElementById('player_count').innerHTML = pVal
     }
-    
+
 }
 
 refreshMojangStatuses()
@@ -276,7 +285,7 @@ let serverStatusListener = setInterval(() => refreshServerStatus(true), 300000)
 
 /**
  * Shows an error overlay, toggles off the launch area.
- * 
+ *
  * @param {string} title The overlay title.
  * @param {string} desc The overlay description.
  */
@@ -295,8 +304,8 @@ function showLaunchFailure(title, desc){
 
 /**
  * Asynchronously scan the system for valid Java installations.
- * 
- * @param {boolean} launchAfter Whether we should begin to launch after scanning. 
+ *
+ * @param {boolean} launchAfter Whether we should begin to launch after scanning.
  */
 async function asyncSystemScan(effectiveJavaOptions, launchAfter = true){
 
@@ -321,7 +330,7 @@ async function asyncSystemScan(effectiveJavaOptions, launchAfter = true){
         setOverlayHandler(() => {
             setLaunchDetails(Lang.queryJS('landing.systemScan.javaDownloadPrepare'))
             toggleOverlay(false)
-            
+
             try {
                 downloadJava(effectiveJavaOptions, launchAfter)
             } catch(err) {
@@ -435,6 +444,194 @@ async function downloadJava(effectiveJavaOptions, launchAfter = true) {
 
 }
 
+function resolveLibraryArtifact(libEntry) {
+    if(!isLibraryCompatible(libEntry.rules, libEntry.natives)){
+        return null
+    }
+
+    if(libEntry.natives == null){
+        return libEntry.downloads?.artifact ?? null
+    }
+
+    const classifierTemplate = libEntry.natives[getMojangOS()]
+    if(classifierTemplate == null){
+        return null
+    }
+
+    const classifier = classifierTemplate.replace('${arch}', process.arch.replace('x', ''))
+    return libEntry.downloads?.classifiers?.[classifier] ?? null
+}
+
+async function validateModLoaderLibraries(modLoaderData) {
+    const notValid = []
+    const libDir = nodePath.join(ConfigManager.getCommonDirectory(), 'libraries')
+
+    for(const libEntry of modLoaderData.libraries ?? []){
+        const artifact = resolveLibraryArtifact(libEntry)
+        if(artifact?.path == null || artifact?.url == null){
+            continue
+        }
+
+        const libPath = nodePath.join(libDir, artifact.path)
+        if(!await validateLocalFile(libPath, HashAlgo.SHA1, artifact.sha1)){
+            notValid.push({
+                id: libEntry.name,
+                hash: artifact.sha1,
+                algo: HashAlgo.SHA1,
+                size: artifact.size ?? 0,
+                url: artifact.url,
+                path: libPath
+            })
+        }
+    }
+
+    return notValid
+}
+
+async function ensureModLoaderLibraries(modLoaderData, loggerLaunchSuite) {
+    const invalidLibraries = await validateModLoaderLibraries(modLoaderData)
+    if(invalidLibraries.length === 0){
+        return
+    }
+
+    loggerLaunchSuite.info(`Downloading ${invalidLibraries.length} mod loader libraries.`)
+    setLaunchDetails(Lang.queryJS('landing.dlAsync.downloadingFiles'))
+    setDownloadPercentage(0)
+
+    const expectedTotalSize = getExpectedDownloadSize(invalidLibraries)
+    await downloadQueue(invalidLibraries, received => {
+        const percent = expectedTotalSize > 0 ? Math.trunc((received / expectedTotalSize) * 100) : 0
+        setDownloadPercentage(percent)
+    })
+    setDownloadPercentage(100)
+
+    for(const asset of invalidLibraries){
+        if(!await validateLocalFile(asset.path, asset.algo, asset.hash)){
+            throw new Error(`Downloaded mod loader library failed validation: ${asset.id}`)
+        }
+    }
+}
+
+function resolveNeoForgeVersion(modLoaderData) {
+    const argVersion = resolveModLoaderGameArg(modLoaderData, '--fml.neoForgeVersion')
+    if(argVersion != null){
+        return argVersion
+    }
+
+    const idMatch = `${modLoaderData?.id ?? ''}`.match(/^neoforge-(.+)$/i)
+    return idMatch?.[1] ?? null
+}
+
+function resolveModLoaderGameArg(modLoaderData, argName) {
+    const gameArgs = modLoaderData?.arguments?.game ?? []
+    for(let i=0; i<gameArgs.length - 1; i++){
+        if(gameArgs[i] === argName && typeof gameArgs[i + 1] === 'string'){
+            return gameArgs[i + 1]
+        }
+    }
+
+    return null
+}
+
+function resolveNeoForgeMinecraftArtifactVersion(modLoaderData) {
+    const mcVersion = resolveModLoaderGameArg(modLoaderData, '--fml.mcVersion')
+    const neoFormVersion = resolveModLoaderGameArg(modLoaderData, '--fml.neoFormVersion')
+    return mcVersion != null && neoFormVersion != null ? `${mcVersion}-${neoFormVersion}` : null
+}
+
+function resolveNeoForgeRuntimePaths(version, modLoaderData) {
+    const baseDir = nodePath.join(ConfigManager.getCommonDirectory(), 'libraries', 'net', 'neoforged', 'neoforge', version)
+    const paths = {
+        installer: nodePath.join(baseDir, `neoforge-${version}.jar`),
+        client: nodePath.join(baseDir, `neoforge-${version}-client.jar`),
+        universal: nodePath.join(baseDir, `neoforge-${version}-universal.jar`)
+    }
+
+    const minecraftArtifactVersion = resolveNeoForgeMinecraftArtifactVersion(modLoaderData)
+    if(minecraftArtifactVersion != null){
+        const minecraftClientDir = nodePath.join(ConfigManager.getCommonDirectory(), 'libraries', 'net', 'minecraft', 'client', minecraftArtifactVersion)
+        paths.minecraftSrg = nodePath.join(minecraftClientDir, `client-${minecraftArtifactVersion}-srg.jar`)
+        paths.minecraftExtra = nodePath.join(minecraftClientDir, `client-${minecraftArtifactVersion}-extra.jar`)
+    }
+
+    return paths
+}
+
+async function ensureNeoForgeLauncherProfiles(commonDir) {
+    const launcherProfilesPath = nodePath.join(commonDir, 'launcher_profiles.json')
+    if(await neoForgeFS.pathExists(launcherProfilesPath)){
+        return
+    }
+
+    await neoForgeFS.writeJson(launcherProfilesPath, { profiles: {}, version: 3 })
+}
+
+function runNeoForgeInstaller(javaExec, installerPath, commonDir, loggerLaunchSuite) {
+    return new Promise((resolve, reject) => {
+        const child = neoForgeChildProcess.spawn(javaExec, ['-jar', installerPath, '--installClient', commonDir], {
+            cwd: commonDir
+        })
+
+        const errLines = []
+
+        child.stdout.on('data', data => {
+            data.toString().trim().split(/\r?\n/).filter(Boolean).forEach(line => {
+                loggerLaunchSuite.info(`[NeoForge Installer] ${line}`)
+            })
+        })
+
+        child.stderr.on('data', data => {
+            data.toString().trim().split(/\r?\n/).filter(Boolean).forEach(line => {
+                errLines.push(line)
+                loggerLaunchSuite.warn(`[NeoForge Installer] ${line}`)
+            })
+        })
+
+        child.on('error', reject)
+        child.on('close', code => {
+            if(code === 0){
+                resolve()
+            } else {
+                reject(new Error(`NeoForge installer exited with code ${code}. ${errLines.slice(-5).join(' ')}`.trim()))
+            }
+        })
+    })
+}
+
+async function ensureNeoForgeClientInstall(modLoaderData, serv, loggerLaunchSuite) {
+    const neoForgeVersion = resolveNeoForgeVersion(modLoaderData)
+    if(neoForgeVersion == null){
+        return
+    }
+
+    const commonDir = ConfigManager.getCommonDirectory()
+    const paths = resolveNeoForgeRuntimePaths(neoForgeVersion, modLoaderData)
+    const requiredRuntimePaths = [
+        paths.client,
+        paths.universal,
+        paths.minecraftSrg,
+        paths.minecraftExtra
+    ].filter(Boolean)
+
+    if((await Promise.all(requiredRuntimePaths.map(path => neoForgeFS.pathExists(path)))).every(Boolean)){
+        return
+    }
+
+    if(!await neoForgeFS.pathExists(paths.installer)){
+        throw new Error(`NeoForge installer jar is missing: ${paths.installer}`)
+    }
+
+    loggerLaunchSuite.info(`Preparing NeoForge runtime artifacts for ${neoForgeVersion}.`)
+    setLaunchDetails(Lang.queryJS('landing.dlAsync.preparingToLaunch'))
+
+    await ensureNeoForgeLauncherProfiles(commonDir)
+    await runNeoForgeInstaller(ConfigManager.getJavaExecutable(serv.rawServer.id) || 'java', paths.installer, commonDir, loggerLaunchSuite)
+
+    if(!(await Promise.all(requiredRuntimePaths.map(path => neoForgeFS.pathExists(path)))).every(Boolean)){
+        throw new Error(`NeoForge installer did not generate required runtime jars for ${neoForgeVersion}.`)
+    }
+}
+
 // Keep reference to Minecraft Process
 let proc
 // Is DiscordRPC enabled
@@ -512,7 +709,7 @@ async function dlAsync(login = true) {
         showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringFileVerificationTitle'), err.displayable || Lang.queryJS('landing.dlAsync.seeConsoleForDetails'))
         return
     }
-    
+
 
     if(invalidFileCount > 0) {
         loggerLaunchSuite.info('Downloading files.')
@@ -548,10 +745,35 @@ async function dlAsync(login = true) {
         serv.rawServer.id
     )
 
-    const modLoaderData = await distributionIndexProcessor.loadModLoaderVersionJson(serv)
+    let modLoaderData
+    try {
+        modLoaderData = await distributionIndexProcessor.loadModLoaderVersionJson(serv)
+        await ensureModLoaderLibraries(modLoaderData, loggerLaunchSuite)
+        await ensureNeoForgeClientInstall(modLoaderData, serv, loggerLaunchSuite)
+    } catch(err) {
+        loggerLaunchSuite.error('Error during mod loader library preparation.', err)
+        remote.getCurrentWindow().setProgressBar(-1)
+        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringFileDownloadTitle'), err.displayable || Lang.queryJS('landing.dlAsync.seeConsoleForDetails'))
+        return
+    }
+
+    remote.getCurrentWindow().setProgressBar(-1)
     const versionData = await mojangIndexProcessor.getVersionJson()
 
     if(login) {
+        setLaunchDetails(Lang.queryJS('landing.dlAsync.pleaseWait'))
+        let authValid = false
+        try {
+            authValid = await LandingAuthManager.validateSelected()
+        } catch(err) {
+            loggerLaunchSuite.error('Error while validating selected account before launch.', err)
+        }
+
+        if(!authValid){
+            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.seeConsoleForDetails'))
+            return
+        }
+
         const authUser = ConfigManager.getSelectedAccount()
         loggerLaunchSuite.info(`Sending selected account (${authUser.displayName}) to ProcessBuilder.`)
         let pb = new ProcessBuilder(serv, versionData, modLoaderData, authUser, remote.app.getVersion())
@@ -656,8 +878,8 @@ let newsGlideCount = 0
 
 /**
  * Show the news UI via a slide animation.
- * 
- * @param {boolean} up True to slide up, otherwise false. 
+ *
+ * @param {boolean} up True to slide up, otherwise false.
  */
 function slide_(up){
     const lCUpper = document.querySelector('#landingContainer > #upper')
@@ -731,7 +953,7 @@ let newsLoadingListener = null
 
 /**
  * Set the news loading animation.
- * 
+ *
  * @param {boolean} val True to set loading animation, otherwise false.
  */
 function setNewsLoading(val){
@@ -773,7 +995,7 @@ newsArticleContentScrollable.onscroll = (e) => {
 
 /**
  * Reload the news without restarting.
- * 
+ *
  * @returns {Promise.<void>} A promise which resolves when the news
  * content has finished loading and transitioning.
  */
@@ -811,7 +1033,7 @@ async function digestMessage(str) {
 /**
  * Initialize News UI. This will load the news and prepare
  * the UI accordingly.
- * 
+ *
  * @returns {Promise.<void>} A promise which resolves when the news
  * content has finished loading and transitioning.
  */
@@ -890,7 +1112,7 @@ async function initNews(){
         const switchHandler = (forward) => {
             let cArt = parseInt(newsContent.getAttribute('article'))
             let nxtArt = forward ? (cArt >= newsArr.length-1 ? 0 : cArt + 1) : (cArt <= 0 ? newsArr.length-1 : cArt - 1)
-    
+
             displayArticle(newsArr[nxtArt], nxtArt+1)
         }
 
@@ -930,7 +1152,7 @@ document.addEventListener('keydown', (e) => {
 
 /**
  * Display a news article on the UI.
- * 
+ *
  * @param {Object} articleObject The article meta object.
  * @param {number} index The article index.
  */
@@ -965,7 +1187,7 @@ async function loadNews(){
     }
 
     const promise = new Promise((resolve, reject) => {
-        
+
         const newsFeed = distroData.rawDistribution.rss
         const newsHost = new URL(newsFeed).origin + '/'
         $.ajax({

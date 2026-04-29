@@ -1,11 +1,11 @@
 /**
  * AuthManager
- * 
+ *
  * This module aims to abstract login procedures. Results from Mojang's REST api
  * are retrieved through our Mojang module. These results are processed and stored,
  * if applicable, in the config using the ConfigManager. All login procedures should
  * be made through this module.
- * 
+ *
  * @module authmanager
  */
 // Requirements
@@ -134,7 +134,7 @@ function mojangErrorDisplayable(errorCode) {
  * Add a Mojang account. This will authenticate the given credentials with Mojang's
  * authserver. The resultant data will be stored as an auth account in the
  * configuration database.
- * 
+ *
  * @param {string} username The account username (email if migrated).
  * @param {string} password The account password.
  * @returns {Promise.<Object>} Promise which resolves the resolved authenticated account object.
@@ -160,7 +160,7 @@ exports.addMojangAccount = async function(username, password) {
         } else {
             return Promise.reject(mojangErrorDisplayable(response.mojangErrorCode))
         }
-        
+
     } catch (err){
         log.error(err)
         return Promise.reject(mojangErrorDisplayable(MojangErrorCode.UNKNOWN))
@@ -171,11 +171,11 @@ const AUTH_MODE = { FULL: 0, MS_REFRESH: 1, MC_REFRESH: 2 }
 
 /**
  * Perform the full MS Auth flow in a given mode.
- * 
+ *
  * AUTH_MODE.FULL = Full authorization for a new account.
  * AUTH_MODE.MS_REFRESH = Full refresh authorization.
  * AUTH_MODE.MC_REFRESH = Refresh of the MC token, reusing the MS token.
- * 
+ *
  * @param {string} entryCode FULL-AuthCode. MS_REFRESH=refreshToken, MC_REFRESH=accessToken
  * @param {*} authMode The auth mode.
  * @returns An object with all auth data. AccessToken object will be null when mode is MC_REFRESH.
@@ -195,7 +195,7 @@ async function fullMicrosoftAuthFlow(entryCode, authMode) {
         } else {
             accessTokenRaw = entryCode
         }
-        
+
         const xblResponse = await MicrosoftAuth.getXBLToken(accessTokenRaw)
         if(xblResponse.responseStatus === RestResponseStatus.ERROR) {
             return Promise.reject(microsoftErrorDisplayable(xblResponse.microsoftErrorCode))
@@ -229,19 +229,23 @@ async function fullMicrosoftAuthFlow(entryCode, authMode) {
 /**
  * Calculate the expiry date. Advance the expiry time by 10 seconds
  * to reduce the liklihood of working with an expired token.
- * 
+ *
  * @param {number} nowMs Current time milliseconds.
  * @param {number} epiresInS Expires in (seconds)
- * @returns 
+ * @returns
  */
 function calculateExpiryDate(nowMs, epiresInS) {
     return nowMs + ((epiresInS-10)*1000)
 }
 
+function getMicrosoftXui(fullAuth) {
+    return fullAuth.xsts?.DisplayClaims?.xui?.[0] ?? fullAuth.xbl?.DisplayClaims?.xui?.[0] ?? {}
+}
+
 /**
  * Add a Microsoft account. This will pass the provided auth code to Mojang's OAuth2.0 flow.
  * The resultant data will be stored as an auth account in the configuration database.
- * 
+ *
  * @param {string} authCode The authCode obtained from microsoft.
  * @returns {Promise.<Object>} Promise which resolves the resolved authenticated account object.
  */
@@ -251,6 +255,7 @@ exports.addMicrosoftAccount = async function(authCode) {
 
     // Advance expiry by 10 seconds to avoid close calls.
     const now = new Date().getTime()
+    const xui = getMicrosoftXui(fullAuth)
 
     const ret = ConfigManager.addMicrosoftAuthAccount(
         fullAuth.mcProfile.id,
@@ -259,7 +264,9 @@ exports.addMicrosoftAccount = async function(authCode) {
         calculateExpiryDate(now, fullAuth.mcToken.expires_in),
         fullAuth.accessToken.access_token,
         fullAuth.accessToken.refresh_token,
-        calculateExpiryDate(now, fullAuth.accessToken.expires_in)
+        calculateExpiryDate(now, fullAuth.accessToken.expires_in),
+        xui.xid ?? xui.xuid ?? null,
+        xui.uhs ?? null
     )
     ConfigManager.save()
 
@@ -269,7 +276,7 @@ exports.addMicrosoftAccount = async function(authCode) {
 /**
  * Remove a Mojang account. This will invalidate the access token associated
  * with the account and then remove it from the database.
- * 
+ *
  * @param {string} uuid The UUID of the account to be removed.
  * @returns {Promise.<void>} Promise which resolves to void when the action is complete.
  */
@@ -294,7 +301,7 @@ exports.removeMojangAccount = async function(uuid){
 /**
  * Remove a Microsoft account. It is expected that the caller will invoke the OAuth logout
  * through the ipc renderer.
- * 
+ *
  * @param {string} uuid The UUID of the account to be removed.
  * @returns {Promise.<void>} Promise which resolves to void when the action is complete.
  */
@@ -313,7 +320,7 @@ exports.removeMicrosoftAccount = async function(uuid){
  * Validate the selected account with Mojang's authserver. If the account is not valid,
  * we will attempt to refresh the access token and update that value. If that fails, a
  * new login will be required.
- * 
+ *
  * @returns {Promise.<boolean>} Promise which resolves to true if the access token is valid,
  * otherwise false.
  */
@@ -341,14 +348,14 @@ async function validateSelectedMojangAccount(){
             return true
         }
     }
-    
+
 }
 
 /**
  * Validate the selected account with Microsoft's authserver. If the account is not valid,
  * we will attempt to refresh the access token and update that value. If that fails, a
  * new login will be required.
- * 
+ *
  * @returns {Promise.<boolean>} Promise which resolves to true if the access token is valid,
  * otherwise false.
  */
@@ -357,20 +364,44 @@ async function validateSelectedMicrosoftAccount(){
     const now = new Date().getTime()
     const mcExpiresAt = current.expiresAt
     const mcExpired = now >= mcExpiresAt
+    const msExpiresAt = current.microsoft.expires_at
+    const msExpired = now >= msExpiresAt
 
     if(!mcExpired) {
-        return true
+        const profileResponse = await MicrosoftAuth.getMCProfile(current.accessToken)
+        if(profileResponse.responseStatus === RestResponseStatus.SUCCESS) {
+            if((current.microsoft.xuid == null || current.microsoft.user_hash == null) && !msExpired) {
+                try {
+                    const res = await fullMicrosoftAuthFlow(current.microsoft.access_token, AUTH_MODE.MC_REFRESH)
+                    const xui = getMicrosoftXui(res)
+                    ConfigManager.updateMicrosoftAuthAccount(
+                        current.uuid,
+                        res.mcToken.access_token,
+                        current.microsoft.access_token,
+                        current.microsoft.refresh_token,
+                        current.microsoft.expires_at,
+                        calculateExpiryDate(now, res.mcToken.expires_in),
+                        xui.xid ?? xui.xuid ?? null,
+                        xui.uhs ?? null
+                    )
+                    ConfigManager.save()
+                } catch(err) {
+                    log.warn('Unable to refresh Microsoft XUID metadata.', err)
+                }
+            }
+            return true
+        }
+
+        log.warn('Minecraft access token failed profile validation, attempting refresh.')
     }
 
     // MC token expired. Check MS token.
-
-    const msExpiresAt = current.microsoft.expires_at
-    const msExpired = now >= msExpiresAt
 
     if(msExpired) {
         // MS expired, do full refresh.
         try {
             const res = await fullMicrosoftAuthFlow(current.microsoft.refresh_token, AUTH_MODE.MS_REFRESH)
+            const xui = getMicrosoftXui(res)
 
             ConfigManager.updateMicrosoftAuthAccount(
                 current.uuid,
@@ -378,7 +409,9 @@ async function validateSelectedMicrosoftAccount(){
                 res.accessToken.access_token,
                 res.accessToken.refresh_token,
                 calculateExpiryDate(now, res.accessToken.expires_in),
-                calculateExpiryDate(now, res.mcToken.expires_in)
+                calculateExpiryDate(now, res.mcToken.expires_in),
+                xui.xid ?? xui.xuid ?? null,
+                xui.uhs ?? null
             )
             ConfigManager.save()
             return true
@@ -389,6 +422,7 @@ async function validateSelectedMicrosoftAccount(){
         // Only MC expired, use existing MS token.
         try {
             const res = await fullMicrosoftAuthFlow(current.microsoft.access_token, AUTH_MODE.MC_REFRESH)
+            const xui = getMicrosoftXui(res)
 
             ConfigManager.updateMicrosoftAuthAccount(
                 current.uuid,
@@ -396,7 +430,9 @@ async function validateSelectedMicrosoftAccount(){
                 current.microsoft.access_token,
                 current.microsoft.refresh_token,
                 current.microsoft.expires_at,
-                calculateExpiryDate(now, res.mcToken.expires_in)
+                calculateExpiryDate(now, res.mcToken.expires_in),
+                xui.xid ?? xui.xuid ?? null,
+                xui.uhs ?? null
             )
             ConfigManager.save()
             return true
@@ -409,7 +445,7 @@ async function validateSelectedMicrosoftAccount(){
 
 /**
  * Validate the selected auth account.
- * 
+ *
  * @returns {Promise.<boolean>} Promise which resolves to true if the access token is valid,
  * otherwise false.
  */
@@ -421,5 +457,5 @@ exports.validateSelected = async function(){
     } else {
         return await validateSelectedMojangAccount()
     }
-    
+
 }

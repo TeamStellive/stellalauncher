@@ -1,0 +1,362 @@
+[ejs.landing]
+updateAvailableTooltip = "업데이트 가능"
+usernamePlaceholder = "사용자 이름"
+usernameEditButton = "수정"
+settingsTooltip = "설정"
+serverStatus = "서버"
+serverStatusPlaceholder = "오프라인"
+mojangStatus = "Mojang 상태"
+mojangStatusTooltipTitle = "서비스"
+mojangStatusNETitle = "기타&nbsp;항목"
+newsButton = "뉴스"
+launchButton = "플레이"
+launchButtonPlaceholder = "&#8226; 서버 선택되지 않음"
+launchDetails = "잠시만 기다려주세요.."
+newsNavigationStatus = "{currentPage}/{totalPages}"
+newsErrorLoadSpan = "뉴스 확인 중.."
+newsErrorFailedSpan = "뉴스를 불러오는 데에 실패했습니다."
+newsErrorRetryButton = "다시 시도하기"
+newsErrorNoneSpan = "뉴스가 없습니다."
+
+[ejs.login]
+loginCancelText = "취소"
+loginSubheader = "마인크래프트 로그인"
+loginEmailError = "* 잘못된 값입니다."
+loginEmailPlaceholder = "이메일 또는 사용자 이름"
+loginPasswordError = "* 필요"
+loginPasswordPlaceholder = "비밀번호"
+loginForgotPasswordLink = "https://minecraft.net/password/forgot/"
+loginForgotPasswordText = "비밀번호를 잊으셨나요?"
+loginRememberMeText = "로그인 상태 유지"
+loginButtonText = "로그인"
+loginNeedAccountLink = "https://minecraft.net/store/minecraft-java-edition/"
+loginNeedAccountText = "계정이 필요하신가요?"
+loginPasswordDisclaimer1 = "비밀번호는 Mojang으로 직접 전송되며, 저장되지 않습니다."
+loginPasswordDisclaimer2 = "{appName}는 Mojang AB와 관련이 없습니다."
+
+[ejs.loginOptions]
+loginOptionsTitle = "로그인 옵션"
+loginWithMicrosoft = "Microsoft 계정으로 로그인"
+loginWithMojang = "Mojang 계정으로 로그인"
+cancelButton = "취소"
+
+[ejs.overlay]
+serverSelectHeader = "서버 목록"
+serverSelectConfirm = "선택"
+serverSelectCancel = "취소"
+accountSelectHeader = "계정 선택"
+accountSelectConfirm = "선택"
+accountSelectCancel = "취소"
+
+[ejs.settings]
+navHeaderText = "설정"
+navAccount = "계정"
+navMinecraft = "마인크래프트"
+navMods = "모드"
+navJava = "자바"
+navLauncher = "런처"
+navAbout = "소개"
+navUpdates = "업데이트"
+navDone = "완료"
+tabAccountHeaderText = "계정 설정"
+tabAccountHeaderDesc = "새 계정을 추가하거나, 기존 계정을 관리하세요."
+microsoftAccount = "Microsoft"
+addMicrosoftAccount = "+ Microsoft 계정 추가"
+mojangAccount = "Mojang"
+addMojangAccount = "+ Mojang 계정 추가"
+minecraftTabHeaderText = "마인크래프트 설정"
+minecraftTabHeaderDesc = "게임 실행 관련 설정"
+gameResolutionTitle = "게임 해상도"
+launchFullscreenTitle = "전체 화면으로 실행"
+autoConnectTitle = "실행 시 서버에 자동 연결"
+launchDetachedTitle = "런처와 분리된 상태로 게임 실행"
+launchDetachedDesc = "런처와 게임이 분리되지 않으면, 런처가 종료될 때 게임도 종료됩니다."
+tabModsHeaderText = "모드 설정"
+tabModsHeaderDesc = "모드를 활성화하거나 비활성화합니다."
+switchServerButton = "교체"
+requiredMods = "필수 모드"
+optionalMods = "선택 모드"
+dropinMods = "추가 모드"
+addMods = "모드 추가"
+dropinRefreshNote = "(F5를 눌러 새로고침)"
+shaderpacks = "셰이더팩"
+shaderpackDesc = "셰이더를 활성화/비활성화합니다. 성능이 좋은 환경에서만 원활히 작동합니다. 사용자 셰이더팩을 추가할 수 있습니다."
+selectShaderpack = "셰이더팩 선택"
+tabJavaHeaderText = "자바 설정"
+tabJavaHeaderDesc = "자바 설정을 관리합니다. (고급)"
+memoryTitle = "메모리"
+maxRAM = "최대 램"
+minRAM = "최소 램"
+memoryDesc = "권장 최소 램은 3GB입니다. 최소/최대 값을 동일하게 설정하면 렉이 줄어들 수 있습니다."
+memoryTotalTitle = "총량"
+memoryAvailableTitle = "사용 가능"
+javaExecutableTitle = "자바 실행 파일"
+javaExecSelDialogTitle = "자바 실행 파일 선택"
+javaExecSelButtonText = "파일 선택"
+javaExecDesc = "게임 실행 전에 자바 실행 파일을 확인합니다."
+javaPathDesc = "경로는 <strong>{pathSuffix}</strong>로 끝나야 합니다."
+jvmOptsTitle = "추가 JVM 옵션"
+jvmOptsDesc = "JVM 설정 시 적용할 옵션입니다. <em>-Xms</em>와 <em>-Xmx</em>는 포함하지 마세요."
+launcherTabHeaderText = "런처 설정"
+launcherTabHeaderDesc = "런처 자체 설정"
+allowPrereleaseTitle = "베타 버전 업데이트 허용"
+allowPrereleaseDesc = "베타 버전에는 아직 충분히 테스트되거나 완전히 통합되지 않은 새로운 기능이 포함될 수 있습니다.<br>베타 버전을 사용하는 경우, 이는 항상 해당됩니다."
+dataDirectoryTitle = "데이터 경로"
+selectDataDirectory = "데이터 경로 선택"
+chooseFolder = "폴더 선택"
+dataDirectoryDesc = "모든 게임 파일과 로컬 Java 설치 파일은 데이터 디렉터리에 저장됩니다.<br>스크린샷과 월드 저장 파일은 해당 서버 구성의 인스턴스 폴더에 저장됩니다."
+aboutTabHeaderText = "소개"
+aboutTabHeaderDesc = "현재 버전의 정보와 업데이트 내역을 보여줍니다."
+aboutTitle = "{appName}"
+stableRelease = "정식 버전"
+versionText = "버전 "
+sourceGithub = "소스 코드 (GitHub)"
+support = "지원"
+devToolsConsole = "개발자 콘솔"
+releaseNotes = "업데이트 내역"
+changelog = "변경 내역"
+noReleaseNotes = "업데이트 내역이 없습니다."
+viewReleaseNotes = "GitHub에서 업데이트 내역 보기"
+launcherUpdatesHeaderText = "런처 업데이트"
+launcherUpdatesHeaderDesc = "업데이트 다운로드 및 설치"
+checkForUpdates = "업데이트 확인"
+whatsNew = "새로운 기능"
+updateReleaseNotes = "업데이트 내역 동기화"
+
+[ejs.waiting]
+waitingText = "Microsoft 응답 대기 중.."
+
+[ejs.welcome]
+continueButton = "계속"
+
+
+[js.discord]
+waiting = "클라이언트 대기 중.."
+state = "{shortId}번 서버"
+
+[js.index]
+microsoftLoginTitle = "Microsoft 로그인"
+microsoftLogoutTitle = "Microsoft 로그아웃"
+
+[js.login]
+login = "로그인"
+loggingIn = "로그인 중"
+success = "성공"
+tryAgain = "다시 시도"
+
+[js.login.error]
+invalidValue = "* 잘못된 값"
+requiredValue = "* 입력 필요"
+
+[js.login.error.unknown]
+title = "로그인 중 알 수 없는 오류가 발생했습니다."
+desc = "알 수 없는 오류가 발생했습니다. 콘솔을 확인해주세요."
+
+[js.landing.launch]
+pleaseWait = "기다려주세요.."
+failureTitle = "실행 중 오류"
+failureText = "(CTRL + Shift + i)를 눌러 콘솔에서 상세 정보를 확인하세요."
+okay = "확인"
+
+[js.landing.selectedAccount]
+noAccountSelected = "계정 선택되지 않음"
+
+[js.landing.selectedServer]
+noSelection = "서버 선택되지 않음"
+loading = "로딩.."
+
+[js.landing.serverStatus]
+server = "서버"
+offline = "오프라인"
+players = "플레이어 수"
+
+[js.landing.systemScan]
+checking = "시스템 정보 확인 중.."
+noCompatibleJava = "호환되는 Java 설치를 찾을 수 없습니다."
+installJavaMessage = "마인크래프트 실행을 위해 최신 Java {major}x64가 필요합니다. 설치하시겠습니까?"
+installJava = "Java 설치"
+installJavaManually = "수동 설치"
+javaDownloadPrepare = "자바 다운로드 준비 중.."
+javaDownloadFailureTitle = "자바 다운로드 중 오류"
+javaDownloadFailureText = "(CTRL + Shift + i)를 눌러 콘솔에서 상세 정보를 확인하세요."
+javaRequired = "실행을 위해 Java가 필요합니다."
+javaRequiredMessage = '실행하려면 유효한 x64 Java {major} 설치가 필요합니다.<br><br>수동으로 올바른 Java 버전을 설치하는 방법은 <a href="https://github.com/dscalzi/HeliosLauncher/wiki/Java-Management#manually-installing-a-valid-version-of-java">Java 관리 가이드</a>를 참고하세요.'
+javaRequiredDismiss = "이해했습니다."
+javaRequiredCancel = "돌아가기"
+
+[js.landing.downloadJava]
+findJdkFailure = "OpenJDK를 찾을 수 없습니다."
+javaDownloadCorruptedError = "다운로드된 JDK가 손상되었습니다."
+extractingJava = "Java 압축 해제 중"
+javaInstalled = "Java 설치 완료!"
+
+[js.landing.dlAsync]
+loadingServerInfo = "서버 정보 불러오는 중.."
+fatalError = "치명적 오류"
+unableToLoadDistributionIndex = "서버 목록 파일을 읽어오던 중 오류가 발생했습니다. (CTRL + Shift + i)를 눌러 콘솔에서 상세 정보를 확인하세요."
+pleaseWait = "기다려주세요.."
+errorDuringLaunchTitle = "실행 중 오류"
+seeConsoleForDetails = "(CTRL + Shift + i)를 눌러 콘솔에서 상세 정보를 확인하세요."
+validatingFileIntegrity = "파일 검사 중.."
+errorDuringFileVerificationTitle = "파일 검증 중 오류"
+downloadingFiles = "파일 다운로드 중.."
+errorDuringFileDownloadTitle = "파일 다운로드 중 오류"
+preparingToLaunch = "실행 준비 중.."
+launchingGame = "게임 실행 중.."
+launchWrapperNotDownloaded = "LaunchWrapper를 제대로 다운로드하지 못했습니다. 게임을 실행할 수 없습니다.<br><br>이 문제를 해결하려면 백신 프로그램을 일시적으로 비활성화한 뒤 다시 게임을 실행해 주세요.<br><br>시간이 된다면 <a href=\"https://github.com/dscalzi/HeliosLauncher/issues\">이슈를 등록</a>하여 사용 중인 백신 프로그램이 무엇인지 알려주세요. 저희가 해당 업체에 연락해 문제를 해결해 보겠습니다."
+doneEnjoyServer = "완료되었어요. 서버를 즐겨주세요!"
+checkConsoleForDetails = "(CTRL + Shift + i)를 눌러 콘솔에서 상세 정보를 확인해주세요."
+
+[js.landing.news]
+checking = "뉴스 확인 중.."
+
+[js.landing.discord]
+loading = "게임 불러오는 중.."
+joining = "서버 접속 중.."
+joined = "플레이 중"
+
+[js.overlay]
+dismiss = "닫기"
+
+[js.settings.fileSelectors]
+executables = "실행 파일"
+allFiles = "모든 파일"
+
+[js.settings.mstfLogin]
+errorTitle = "오류 발생"
+errorMessage = "Microsoft 인증에 실패했습니다. 다시 시도해주세요."
+okButton = "확인"
+
+[js.settings.mstfLogout]
+errorTitle = "오류 발생"
+errorMessage = "Microsoft 로그아웃에 실패했습니다. 다시 시도해주세요."
+okButton = "확인"
+
+[js.settings.authAccountSelect]
+selectButton = "계정 선택"
+selectedButton = "&#10004; 계정 선택 됨"
+
+[js.settings.authAccountLogout]
+lastAccountWarningTitle = "경고<br>마지막 계정입니다."
+lastAccountWarningMessage = "런처를 사용하려면 최소 1개의 계정이 필요합니다.<br><br>계속 로그아웃 하시겠습니까?"
+confirmButton = "확인"
+cancelButton = "취소"
+
+[js.settings.authAccountPopulate]
+username = "사용자 이름"
+uuid = "UUID"
+selectAccount = "계정 선택"
+selectedAccount = "계정 선택 됨 ✓"
+logout = "로그아웃"
+
+[js.settings.dropinMods]
+removeButton = "삭제"
+deleteFailedTitle = "모드 삭제에 실패했습니다.<br>모드 이름: {fullName}"
+deleteFailedMessage = "파일이 사용 중입니다. 나중에 다시 시도해주세요."
+failedToggleTitle = "하나 이상의 모드를<br>활성화 또는 비활성화하지 못했습니다"
+okButton = "확인"
+
+[js.settings.serverListing]
+mainServer = "메인 서버"
+
+[js.settings.java]
+selectedJava = "선택 됨: Java {version} ({vendor})"
+invalidSelection = "잘못된 선택"
+requiresJava = "Java {major} x64가 필요합니다."
+availableOptions = "사용 가능한 Java {major} (HotSpot VM)"
+
+[js.settings.about]
+preReleaseTitle = "베타 버전"
+stableReleaseTitle = "정식 버전"
+releaseNotesFailed = "업데이트 내역을 불러오지 못했습니다."
+
+[js.settings.updates]
+newReleaseTitle = "새로운 버전이 있습니다."
+newPreReleaseTitle = "새로운 베타 버전이 있습니다."
+downloadingButton = "다운로드 중.."
+downloadButton = 'Github에서 다운로드<span style="font-size: 10px;color: gray;text-shadow: none !important;">런처를 종료한 후 업데이트를 위해 dmg 파일을 실행하세요.</span>'
+latestVersionTitle = "최신 버전을 실행 중입니다."
+checkForUpdatesButton = "업데이트 확인"
+checkingForUpdatesButton = "업데이트 확인 중.."
+
+[js.settings.msftLogin]
+errorTitle = "Microsoft 로그인 실패"
+errorMessage = "Microsoft 계정 인증에 실패했습니다. 다시 시도해주세요."
+okButton = "확인"
+
+[js.uibinder.startup]
+fatalErrorTitle = "치명적 오류: 서버 목록을 불러오는 데에 실패했습니다."
+fatalErrorMessage = "배포 인덱스를 다운로드하기 위해 서버와 연결할 수 없었습니다. 불러올 수 있는 로컬 복사본도 존재하지 않습니다.<br><br>배포 인덱스는 최신 서버 정보를 제공하는 필수 파일입니다. 이 파일 없이는 런처를 시작할 수 없습니다. 인터넷에 연결되어 있는지 확인한 후 애플리케이션을 다시 실행해 주세요."
+closeButton = "닫기"
+
+[js.uibinder.validateAccount]
+failedMessageTitle = "로그인 갱신 실패"
+failedMessage = "<strong>{account}</strong> 계정의 로그인 정보를 새로고침할 수 없습니다. 다른 계정을 선택하거나 다시 로그인해 주세요."
+failedMessageSelectAnotherAccount = "<strong>{account}</strong> 계정의 로그인 정보를 새로고침할 수 없습니다. 다시 로그인해 주세요."
+loginButton = "로그인"
+selectAnotherAccountButton = "다른 계정 선택"
+
+[js.uicore.autoUpdate]
+checkingForUpdateButton = "업데이트 확인 중..."
+installNowButton = "지금 설치"
+checkForUpdatesButton = "업데이트 확인"
+
+[js.auth.microsoft.error]
+noProfileTitle = "로그인 오류:<br>프로필이 설정되지 않음"
+noProfileDesc = "Microsoft 계정에 아직 Minecraft 프로필이 설정되어 있지 않습니다. 최근에 게임을 구매했거나 Xbox Game Pass를 통해 등록했다면 <a href=\"https://minecraft.net/\">Minecraft.net</a>에서 프로필을 설정해야 합니다.<br><br>아직 게임을 구매하지 않았다면 <a href=\"https://minecraft.net/\">Minecraft.net</a>에서 구매할 수도 있습니다."
+
+noXboxAccountTitle = "로그인 오류:<br>Xbox 계정 없음"
+noXboxAccountDesc = "Microsoft 계정에 연결된 Xbox 계정이 없습니다."
+
+xblBannedTitle = "로그인 오류:<br>Xbox Live 사용 불가"
+xblBannedDesc = "Microsoft 계정이 Xbox Live를 사용할 수 없거나 금지된 국가에 등록되어 있습니다."
+
+under18Title = "로그인 오류:<br>보호자 승인 필요"
+under18Desc = "18세 미만 사용자의 계정은 성인이 Family에 추가해야 합니다."
+
+unknownTitle = "로그인 중 알 수 없는 오류"
+unknownDesc = "알 수 없는 오류가 발생했습니다. 자세한 내용은 콘솔을 확인해 주세요."
+
+
+[js.auth.mojang.error]
+methodNotAllowedTitle = "내부 오류:<br>허용되지 않은 메서드"
+methodNotAllowedDesc = "허용되지 않은 메서드입니다. 이 오류를 신고해 주세요."
+
+notFoundTitle = "내부 오류:<br>찾을 수 없음"
+notFoundDesc = "인증 엔드포인트를 찾을 수 없습니다. 이 문제를 신고해 주세요."
+
+accountMigratedTitle = "로그인 오류:<br>계정 이전됨"
+accountMigratedDesc = "이전된 계정으로 로그인을 시도했습니다. 사용자 이름 대신 계정 이메일로 다시 시도해 주세요."
+
+invalidCredentialsTitle = "로그인 오류:<br>잘못된 인증 정보"
+invalidCredentialsDesc = "입력한 이메일 또는 비밀번호가 올바르지 않습니다. 다시 시도해 주세요."
+
+tooManyAttemptsTitle = "로그인 오류:<br>시도 횟수 초과"
+tooManyAttemptsDesc = "최근 이 계정으로 로그인 시도가 너무 많이 발생했습니다. 나중에 다시 시도해 주세요."
+
+invalidTokenTitle = "로그인 오류:<br>잘못된 토큰"
+invalidTokenDesc = "제공된 액세스 토큰이 올바르지 않습니다."
+
+tokenHasProfileTitle = "로그인 오류:<br>토큰에 프로필 존재"
+tokenHasProfileDesc = "액세스 토큰에 이미 프로필이 할당되어 있습니다. 프로필 선택 기능은 아직 구현되지 않았습니다."
+
+credentialsMissingTitle = "로그인 오류:<br>인증 정보 누락"
+credentialsMissingDesc = "사용자 이름/비밀번호가 제출되지 않았거나 비밀번호가 3자 미만입니다."
+
+invalidSaltVersionTitle = "로그인 오류:<br>잘못된 Salt 버전"
+invalidSaltVersionDesc = "잘못된 Salt 버전입니다."
+
+unsupportedMediaTypeTitle = "내부 오류:<br>지원되지 않는 미디어 형식"
+unsupportedMediaTypeDesc = "지원되지 않는 미디어 형식입니다. 이 오류를 신고해 주세요."
+
+accountGoneTitle = "로그인 오류:<br>계정 이전됨"
+accountGoneDesc = "계정이 Microsoft 계정으로 이전되었습니다. Microsoft로 로그인해 주세요."
+
+unreachableTitle = "로그인 오류:<br>서버 연결 불가"
+unreachableDesc = "인증 서버에 연결할 수 없습니다. 서버가 온라인 상태인지, 인터넷에 연결되어 있는지 확인해 주세요."
+
+gameNotPurchasedTitle = "로그인 오류:<br>게임 미구매"
+gameNotPurchasedDesc = "로그인하려는 계정은 Minecraft를 구매하지 않았습니다. <a href=\"https://minecraft.net/\">Minecraft.net</a>에서 구매할 수 있습니다."
+
+unknownErrorTitle = "로그인 중 알 수 없는 오류"
+unknownErrorDesc = "알 수 없는 오류가 발생했습니다. 자세한 내용은 콘솔을 확인해 주세요."

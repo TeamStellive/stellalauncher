@@ -15,10 +15,10 @@ const logger = LoggerUtil.getLogger('ProcessBuilder')
 
 /**
  * Only forge and fabric are top level mod loaders.
- * 
+ *
  * Forge 1.13+ launch logic is similar to fabrics, for now using usingFabricLoader flag to
  * change minor details when needed.
- * 
+ *
  * Rewrite of this module may be needed in the future.
  */
 class ProcessBuilder {
@@ -40,7 +40,7 @@ class ProcessBuilder {
         this.usingFabricLoader = false
         this.llPath = null
     }
-    
+
     /**
      * Convienence method to run the functions typically used to build a process.
      */
@@ -52,8 +52,8 @@ class ProcessBuilder {
         logger.info('Using liteloader:', this.usingLiteLoader)
         this.usingFabricLoader = this.server.modules.some(mdl => mdl.rawModule.type === Type.Fabric)
         logger.info('Using fabric loader:', this.usingFabricLoader)
-        const modObj = this.resolveModConfiguration(ConfigManager.getModConfiguration(this.server.rawServer.id).mods, this.server.modules)
-        
+        const modObj = this.resolveModConfiguration(this._getServerModConfiguration(), this.server.modules)
+
         // Mod list below 1.13
         // Fabric only supports 1.14+
         if(!mcVersionAtLeast('1.13', this.server.rawServer.minecraftVersion)){
@@ -62,7 +62,7 @@ class ProcessBuilder {
                 this.constructJSONModList('liteloader', modObj.lMods, true)
             }
         }
-        
+
         const uberModArr = modObj.fMods.concat(modObj.lMods)
         let args = this.constructJVMArguments(uberModArr, tempNativePath)
 
@@ -91,7 +91,7 @@ class ProcessBuilder {
 
         child.stdout.on('data', (data) => {
             data.trim().split('\n').forEach(x => console.log(`\x1b[32m[Minecraft]\x1b[0m ${x}`))
-            
+
         })
         child.stderr.on('data', (data) => {
             data.trim().split('\n').forEach(x => console.log(`\x1b[31m[Minecraft]\x1b[0m ${x}`))
@@ -111,9 +111,28 @@ class ProcessBuilder {
     }
 
     /**
+     * Library directory 경로 문자열을 안전하게 변환합니다.
+     * 세미콜론(;)으로 구분된 여러 경로를 포함할 수 있으므로 각각 변환합니다.
+     *
+     * @param {string} libPath - 세미콜론으로 구분된 library 경로들
+     * @returns {string} 안전화된 경로 문자열
+     */
+    _sanitizeLibraryPath(libPath) {
+        if (process.platform !== 'win32' || !libPath) {
+            return libPath
+        }
+
+        const separator = process.platform === 'win32' ? ';' : ':'
+        return libPath
+            .split(separator)
+            .map(p => this._sanitizePathForClasspath(p.trim()))
+            .join(separator)
+    }
+
+    /**
      * Get the platform specific classpath separator. On windows, this is a semicolon.
      * On Unix, this is a colon.
-     * 
+     *
      * @returns {string} The classpath separator for the current operating system.
      */
     static getClasspathSeparator() {
@@ -124,7 +143,7 @@ class ProcessBuilder {
      * Determine if an optional mod is enabled from its configuration value. If the
      * configuration value is null, the required object will be used to
      * determine if it is enabled.
-     * 
+     *
      * A mod is enabled if:
      *   * The configuration is not null and one of the following:
      *     * The configuration is a boolean and true.
@@ -132,7 +151,7 @@ class ProcessBuilder {
      *   * The configuration is null and one of the following:
      *     * The required object is null.
      *     * The required object's 'def' property is null or true.
-     * 
+     *
      * @param {Object | boolean} modCfg The mod configuration object.
      * @param {Object} required Optional. The required object from the mod's distro declaration.
      * @returns {boolean} True if the mod is enabled, false otherwise.
@@ -151,7 +170,7 @@ class ProcessBuilder {
         for(let ll of this.server.modules){
             if(ll.rawModule.type === Type.LiteLoader){
                 if(!ll.getRequired().value){
-                    const modCfg = ConfigManager.getModConfiguration(this.server.rawServer.id).mods
+                    const modCfg = this._getServerModConfiguration()
                     if(ProcessBuilder.isModEnabled(modCfg[ll.getVersionlessMavenIdentifier()], ll.getRequired())){
                         if(fs.existsSync(ll.getPath())){
                             this.usingLiteLoader = true
@@ -168,16 +187,22 @@ class ProcessBuilder {
         }
     }
 
+    _getServerModConfiguration(){
+        return ConfigManager.getModConfiguration(this.server.rawServer.id)?.mods ?? {}
+    }
+
     /**
      * Resolve an array of all enabled mods. These mods will be constructed into
      * a mod list format and enabled at launch.
-     * 
+     *
      * @param {Object} modCfg The mod configuration object.
      * @param {Array.<Object>} mdls An array of modules to parse.
      * @returns {{fMods: Array.<Object>, lMods: Array.<Object>}} An object which contains
      * a list of enabled forge mods and litemods.
      */
     resolveModConfiguration(modCfg, mdls){
+        modCfg = modCfg ?? {}
+
         let fMods = []
         let lMods = []
 
@@ -188,7 +213,8 @@ class ProcessBuilder {
                 const e = ProcessBuilder.isModEnabled(modCfg[mdl.getVersionlessMavenIdentifier()], mdl.getRequired())
                 if(!o || (o && e)){
                     if(mdl.subModules.length > 0){
-                        const v = this.resolveModConfiguration(modCfg[mdl.getVersionlessMavenIdentifier()].mods, mdl.subModules)
+                        const childCfg = modCfg[mdl.getVersionlessMavenIdentifier()]
+                        const v = this.resolveModConfiguration(childCfg?.mods ?? {}, mdl.subModules)
                         fMods = fMods.concat(v.fMods)
                         lMods = lMods.concat(v.lMods)
                         if(type === Type.LiteLoader){
@@ -238,14 +264,14 @@ class ProcessBuilder {
             // We know old forge versions follow this format.
             // Error must be caused by newer version.
         }
-        
+
         // Equal or errored
         return true
     }
 
     /**
      * Construct a mod list json object.
-     * 
+     *
      * @param {'forge' | 'liteloader'} type The mod list type to construct.
      * @param {Array.<Object>} mods An array of mods to add to the mod list.
      * @param {boolean} save Optional. Whether or not we should save the mod list file.
@@ -266,7 +292,7 @@ class ProcessBuilder {
             }
         }
         modList.modRef = ids
-        
+
         if(save){
             const json = JSON.stringify(modList, null, 4)
             fs.writeFileSync(type === 'forge' ? this.fmlDir : this.llDir, json, 'UTF-8')
@@ -277,7 +303,7 @@ class ProcessBuilder {
 
     // /**
     //  * Construct the mod argument list for forge 1.13
-    //  * 
+    //  *
     //  * @param {Array.<Object>} mods An array of mods to add to the mod list.
     //  */
     // constructModArguments(mods){
@@ -295,17 +321,19 @@ class ProcessBuilder {
     //     } else {
     //         return []
     //     }
-        
+
     // }
 
     /**
      * Construct the mod argument list for forge 1.13 and Fabric
-     * 
+     *
      * @param {Array.<Object>} mods An array of mods to add to the mod list.
      */
     constructModList(mods) {
         const writeBuffer = mods.map(mod => {
-            return this.usingFabricLoader ? mod.getPath() : mod.getExtensionlessMavenIdentifier()
+            const modPath = mod.getPath()
+            // Fabric의 경우 실제 파일 경로를 모드 리스트에 포함하므로 안전 경로로 변환
+            return this.usingFabricLoader ? this._sanitizePathForClasspath(modPath) : mod.getExtensionlessMavenIdentifier()
         }).join('\n')
 
         if(writeBuffer) {
@@ -341,7 +369,7 @@ class ProcessBuilder {
 
     /**
      * Construct the argument array that will be passed to the JVM process.
-     * 
+     *
      * @param {Array.<Object>} mods An array of enabled mods which will be launched with this process.
      * @param {string} tempNativePath The path to store the native libraries.
      * @returns {Array.<string>} An array containing the full JVM arguments for this process.
@@ -357,7 +385,7 @@ class ProcessBuilder {
     /**
      * Construct the argument array that will be passed to the JVM process.
      * This function is for 1.12 and below.
-     * 
+     *
      * @param {Array.<Object>} mods An array of enabled mods which will be launched with this process.
      * @param {string} tempNativePath The path to store the native libraries.
      * @returns {Array.<string>} An array containing the full JVM arguments for this process.
@@ -392,9 +420,9 @@ class ProcessBuilder {
     /**
      * Construct the argument array that will be passed to the JVM process.
      * This function is for 1.13+
-     * 
+     *
      * Note: Required Libs https://github.com/MinecraftForge/MinecraftForge/blob/af98088d04186452cb364280340124dfd4766a5c/src/fmllauncher/java/net/minecraftforge/fml/loading/LibraryFinder.java#L82
-     * 
+     *
      * @param {Array.<Object>} mods An array of enabled mods which will be launched with this process.
      * @param {string} tempNativePath The path to store the native libraries.
      * @returns {Array.<string>} An array containing the full JVM arguments for this process.
@@ -412,7 +440,7 @@ class ProcessBuilder {
         if(this.modManifest.arguments.jvm != null) {
             for(const argStr of this.modManifest.arguments.jvm) {
                 args.push(argStr
-                    .replaceAll('${library_directory}', this.libPath)
+                    .replaceAll('${library_directory}', this._sanitizeLibraryPath(this.libPath))
                     .replaceAll('${classpath_separator}', ProcessBuilder.getClasspathSeparator())
                     .replaceAll('${version_name}', this.modManifest.id)
                 )
@@ -438,7 +466,7 @@ class ProcessBuilder {
 
         for(let i=0; i<args.length; i++){
             if(typeof args[i] === 'object' && args[i].rules != null){
-                
+
                 let checksum = 0
                 for(let rule of args[i].rules){
                     if(rule.os != null){
@@ -509,6 +537,12 @@ class ProcessBuilder {
                         case 'auth_access_token':
                             val = this.authUser.accessToken
                             break
+                        case 'clientid':
+                            val = this._resolveClientId()
+                            break
+                        case 'auth_xuid':
+                            val = this._resolveAuthXuid()
+                            break
                         case 'user_type':
                             val = this.authUser.type === 'microsoft' ? 'msa' : 'mojang'
                             break
@@ -543,7 +577,7 @@ class ProcessBuilder {
 
         // Autoconnect
         this._processAutoConnectArg(args)
-        
+
 
         // Forge Specific Arguments
         args = args.concat(this.modManifest.arguments.game)
@@ -558,7 +592,7 @@ class ProcessBuilder {
 
     /**
      * Resolve the arguments required by forge.
-     * 
+     *
      * @returns {Array.<string>} An array containing the arguments required by forge.
      */
     _resolveForgeArgs(){
@@ -593,6 +627,12 @@ class ProcessBuilder {
                     case 'auth_access_token':
                         val = this.authUser.accessToken
                         break
+                    case 'clientid':
+                        val = this._resolveClientId()
+                        break
+                    case 'auth_xuid':
+                        val = this._resolveAuthXuid()
+                        break
                     case 'user_type':
                         val = this.authUser.type === 'microsoft' ? 'msa' : 'mojang'
                         break
@@ -622,7 +662,7 @@ class ProcessBuilder {
             mcArgs.push('--height')
             mcArgs.push(ConfigManager.getGameHeight())
         }
-        
+
         // Mod List File Argument
         mcArgs.push('--modListFile')
         if(this._lteMinorVersion(9)) {
@@ -630,7 +670,7 @@ class ProcessBuilder {
         } else {
             mcArgs.push('absolute:' + this.fmlDir)
         }
-        
+
 
         // LiteLoader
         if(this.usingLiteLoader){
@@ -645,9 +685,26 @@ class ProcessBuilder {
         return mcArgs
     }
 
+    _resolveClientId(){
+        let clientId = ConfigManager.getClientToken()
+        if(clientId == null){
+            clientId = crypto.randomUUID != null ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex')
+            ConfigManager.setClientToken(clientId)
+            ConfigManager.save()
+        }
+        return clientId
+    }
+
+    _resolveAuthXuid(){
+        return this.authUser.xuid
+            ?? this.authUser.microsoft?.xuid
+            ?? this.authUser.microsoft?.xbox_xuid
+            ?? '0'
+    }
+
     /**
      * Ensure that the classpath entries all point to jar files.
-     * 
+     *
      * @param {Array.<String>} list Array of classpath entries.
      */
     _processClassPathList(list) {
@@ -667,7 +724,7 @@ class ProcessBuilder {
      * Resolve the full classpath argument list for this process. This method will resolve all Mojang-declared
      * libraries as well as the libraries declared by the server. Since mods are permitted to declare libraries,
      * this method requires all enabled mods as an input
-     * 
+     *
      * @param {Array.<Object>} mods An array of enabled mods which will be launched with this process.
      * @param {string} tempNativePath The path to store the native libraries.
      * @returns {Array.<string>} An array containing the paths of each library required by this process.
@@ -681,7 +738,7 @@ class ProcessBuilder {
             const version = this.vanillaManifest.id
             cpArgs.push(path.join(this.commonDir, 'versions', version, version + '.jar'))
         }
-        
+
 
         if(this.usingLiteLoader){
             cpArgs.push(this.llPath)
@@ -690,26 +747,98 @@ class ProcessBuilder {
         // Resolve the Mojang declared libraries.
         const mojangLibs = this._resolveMojangLibraries(tempNativePath)
 
+        // Resolve libraries declared by the mod loader version manifest.
+        const modLoaderLibs = this._resolveModLoaderLibraries()
+
         // Resolve the server declared libraries.
         const servLibs = this._resolveServerLibraries(mods)
+
+        if(this._getNeoForgeVersion() != null){
+            // The distro ForgeHosted artifact is the NeoForge installer, not a runtime jar.
+            // FML discovers the generated client/universal jars from libraryDirectory.
+            delete servLibs['net.neoforged:neoforge']
+        }
 
         // Merge libraries, server libs with the same
         // maven identifier will override the mojang ones.
         // Ex. 1.7.10 forge overrides mojang's guava with newer version.
-        const finalLibs = {...mojangLibs, ...servLibs}
+        const finalLibs = {...mojangLibs, ...modLoaderLibs, ...servLibs}
         cpArgs = cpArgs.concat(Object.values(finalLibs))
 
         this._processClassPathList(cpArgs)
 
-        return cpArgs
+        // Windows 파일 시스템에서 콜론을 언더바로 변환
+        // 드라이브 문자(C:)는 보존하고, Maven ID에 포함된 콜론(:)만 변환
+        return cpArgs.map(p => {
+            if (typeof p !== 'string') return p
+            return this._sanitizePathForClasspath(p)
+        })
+    }
+
+    /**
+     * Classpath에 사용되는 경로를 안전하게 변환합니다.
+     * Windows 드라이브 문자를 보존하고 Maven ID의 콜론만 변환합니다.
+     *
+     * @param {string} filepath - 원본 경로
+     * @returns {string} 안전화된 경로
+     */
+    _sanitizePathForClasspath(filepath) {
+        if (process.platform !== 'win32' || typeof filepath !== 'string') {
+            return filepath
+        }
+
+        const parsed = path.parse(filepath)
+        if (parsed.root) {
+            // 드라이브 문자 보존: C:\ 포함, 그 이후 콜론만 변환
+            return parsed.root + filepath.slice(parsed.root.length).replace(/:/g, '_')
+        }
+        // 드라이브 문자 없는 경로 (네트워크 경로 등)
+        return filepath.replace(/:/g, '_')
+    }
+
+    _getLibraryClasspathKey(libName) {
+        const parts = libName.split('@')[0].split(':')
+        if(parts.length >= 4){
+            return `${parts[0]}:${parts[1]}:${parts.slice(3).join(':')}`
+        }
+        return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : libName
+    }
+
+    _resolveModLoaderLibraries(){
+        const libs = {}
+
+        for(const lib of this.modManifest.libraries ?? []){
+            if(!isLibraryCompatible(lib.rules, lib.natives) || lib.natives != null){
+                continue
+            }
+
+            const artifact = lib.downloads?.artifact
+            if(artifact?.path != null){
+                libs[this._getLibraryClasspathKey(lib.name)] = path.join(this.libPath, artifact.path)
+            }
+        }
+
+        return libs
+    }
+
+    _getNeoForgeVersion() {
+        const gameArgs = this.modManifest?.arguments?.game ?? []
+        for(let i=0; i<gameArgs.length - 1; i++){
+            if(gameArgs[i] === '--fml.neoForgeVersion' && typeof gameArgs[i + 1] === 'string'){
+                return gameArgs[i + 1]
+            }
+        }
+
+        const idMatch = `${this.modManifest?.id ?? ''}`.match(/^neoforge-(.+)$/i)
+        return idMatch?.[1] ?? null
     }
 
     /**
      * Resolve the libraries defined by Mojang's version data. This method will also extract
      * native libraries and point to the correct location for its classpath.
-     * 
+     *
      * TODO - clean up function
-     * 
+     *
      * @param {string} tempNativePath The path to store the native libraries.
      * @returns {{[id: string]: string}} An object containing the paths of each library mojang declares.
      */
@@ -828,7 +957,7 @@ class ProcessBuilder {
      * Resolve the libraries declared by this server in order to add them to the classpath.
      * This method will also check each enabled mod for libraries, as mods are permitted to
      * declare libraries.
-     * 
+     *
      * @param {Array.<Object>} mods An array of enabled mods which will be launched with this process.
      * @returns {{[id: string]: string}} An object containing the paths of each library this server requires.
      */
@@ -861,7 +990,7 @@ class ProcessBuilder {
 
     /**
      * Recursively resolve the path of each library required by this module.
-     * 
+     *
      * @param {Object} mdl A module object from the server distro index.
      * @returns {{[id: string]: string}} An object containing the paths of each library this module requires.
      */
