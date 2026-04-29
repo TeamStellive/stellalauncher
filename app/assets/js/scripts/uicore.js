@@ -56,9 +56,8 @@ ipcRenderer.on('autoUpdateNotification', (event, arg, info) => {
         case 'update-downloaded':
             loggerAutoUpdater.info('Update ' + info.version + ' ready to be installed.')
             settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.installNowButton'), false, () => {
-                if(!isDev){
-                    ipcRenderer.send('autoUpdateAction', 'installUpdateNow')
-                }
+                settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.installNowButton'), true)
+                ipcRenderer.send('autoUpdateAction', 'installUpdateNow')
             })
             showUpdateUI(info)
             break

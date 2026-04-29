@@ -25,9 +25,8 @@ win:
         - x64
 
 nsis:
-  oneClick: false
-  perMachine: false
-  allowToChangeInstallationDirectory: true
+  oneClick: true
+  perMachine: true
 
 mac:
   target:
