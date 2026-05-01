@@ -9,6 +9,7 @@ const os                    = require('os')
 const path                  = require('path')
 
 const ConfigManager            = require('./configmanager')
+const { REMOTE_DISTRO_URL }    = require('./distromanager')
 
 const logger = LoggerUtil.getLogger('ProcessBuilder')
 
@@ -73,7 +74,14 @@ class ProcessBuilder {
 
         // Hide access token
         const loggableArgs = [...args]
-        loggableArgs[loggableArgs.findIndex(x => x === this.authUser.accessToken)] = '**********'
+        const accessTokenIndex = loggableArgs.findIndex(x => x === this.authUser.accessToken)
+        if(accessTokenIndex >= 0){
+            loggableArgs[accessTokenIndex] = '**********'
+        }
+        const sessionProofIndex = loggableArgs.findIndex(x => typeof x === 'string' && x.startsWith('-Dstella.sessionProof='))
+        if(sessionProofIndex >= 0){
+            loggableArgs[sessionProofIndex] = '-Dstella.sessionProof=**********'
+        }
 
         logger.info('Launch Arguments:', loggableArgs)
 
@@ -145,6 +153,7 @@ class ProcessBuilder {
      * determine if it is enabled.
      *
      * A mod is enabled if:
+     *   * The distro marks it as required.
      *   * The configuration is not null and one of the following:
      *     * The configuration is a boolean and true.
      *     * The configuration is an object and its 'value' property is true.
@@ -157,6 +166,9 @@ class ProcessBuilder {
      * @returns {boolean} True if the mod is enabled, false otherwise.
      */
     static isModEnabled(modCfg, required = null){
+        if(required?.value){
+            return true
+        }
         return modCfg != null ? ((typeof modCfg === 'boolean' && modCfg) || (typeof modCfg === 'object' && (typeof modCfg.value !== 'undefined' ? modCfg.value : true))) : required != null ? required.def : true
     }
 
@@ -367,6 +379,16 @@ class ProcessBuilder {
         }
     }
 
+    _constructStellaJvmArguments(){
+        return [
+            '-Dstella.launcher=true',
+            `-Dstella.selectedServerId=${this.server.rawServer.id}`,
+            `-Dstella.distributionUrl=${REMOTE_DISTRO_URL}`,
+            `-Dstella.serverAddress=${this.server.hostname}:${this.server.port}`,
+            '-Dstella.sessionProof=stella-dev-proof'
+        ]
+    }
+
     /**
      * Construct the argument array that will be passed to the JVM process.
      *
@@ -406,6 +428,7 @@ class ProcessBuilder {
         args.push('-Xmx' + ConfigManager.getMaxRAM(this.server.rawServer.id))
         args.push('-Xms' + ConfigManager.getMinRAM(this.server.rawServer.id))
         args = args.concat(ConfigManager.getJVMOptions(this.server.rawServer.id))
+        args = args.concat(this._constructStellaJvmArguments())
         args.push('-Djava.library.path=' + tempNativePath)
 
         // Main Java Class
@@ -432,7 +455,7 @@ class ProcessBuilder {
         const argDiscovery = /\${*(.*)}/
 
         // JVM Arguments First
-        let args = this.vanillaManifest.arguments.jvm
+        let args = [...this.vanillaManifest.arguments.jvm]
 
         // Debug securejarhandler
         // args.push('-Dbsl.debug=true')
@@ -457,6 +480,7 @@ class ProcessBuilder {
         args.push('-Xmx' + ConfigManager.getMaxRAM(this.server.rawServer.id))
         args.push('-Xms' + ConfigManager.getMinRAM(this.server.rawServer.id))
         args = args.concat(ConfigManager.getJVMOptions(this.server.rawServer.id))
+        args = args.concat(this._constructStellaJvmArguments())
 
         // Main Java Class
         args.push(this.modManifest.mainClass)
