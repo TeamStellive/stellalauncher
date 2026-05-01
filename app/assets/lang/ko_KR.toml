@@ -132,7 +132,7 @@ continueButton = "계속"
 
 [js.discord]
 waiting = "클라이언트 대기 중.."
-state = "{shortId}번 서버"
+state = "{shortId} 서버"
 
 [js.index]
 microsoftLoginTitle = "Microsoft 로그인"
