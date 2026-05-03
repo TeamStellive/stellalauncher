@@ -23,9 +23,30 @@ const VIEWS = {
     welcome: '#welcomeContainer',
     waiting: '#waitingContainer'
 }
+window.VIEWS = VIEWS
 
 // The currently shown view container.
 let currentView
+let pendingDistroLoad = false
+
+function areMainUIScriptsReady(){
+    return typeof prepareSettings === 'function'
+        && typeof updateSelectedServer === 'function'
+        && typeof refreshServerStatus === 'function'
+        && typeof initNews === 'function'
+        && typeof loginOptionsCancelEnabled === 'function'
+}
+
+async function showMainUIWhenReady(data){
+    if(!areMainUIScriptsReady()){
+        pendingDistroLoad = true
+        rscShouldLoad = true
+        return
+    }
+
+    pendingDistroLoad = false
+    await showMainUI(data)
+}
 
 /**
  * Switch launcher views.
@@ -428,7 +449,7 @@ document.addEventListener('readystatechange', async () => {
             rscShouldLoad = false
             if(!fatalStartupError){
                 const data = await DistroAPI.getDistribution()
-                await showMainUI(data)
+                await showMainUIWhenReady(data)
             } else {
                 showFatalStartupError()
             }
@@ -437,6 +458,13 @@ document.addEventListener('readystatechange', async () => {
 
 }, false)
 
+window.addEventListener('load', async () => {
+    if(pendingDistroLoad && !fatalStartupError){
+        const data = await DistroAPI.getDistribution()
+        await showMainUIWhenReady(data)
+    }
+})
+
 // Actions that must be performed after the distribution index is downloaded.
 ipcRenderer.on('distributionIndexDone', async (event, res) => {
     if(res) {
@@ -444,7 +472,7 @@ ipcRenderer.on('distributionIndexDone', async (event, res) => {
         syncModConfigurations(data)
         ensureJavaSettings(data)
         if(document.readyState === 'interactive' || document.readyState === 'complete'){
-            await showMainUI(data)
+            await showMainUIWhenReady(data)
         } else {
             rscShouldLoad = true
         }

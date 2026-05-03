@@ -34,9 +34,12 @@ exports.query = function(id, placeHolders){
     let query = id.split('.')
     let res = lang
     for(let q of query){
+        if(res == null){
+            return ''
+        }
         res = res[q]
     }
-    let text = res === lang ? '' : res
+    let text = res == null || res === lang ? '' : res
     if (placeHolders) {
         Object.entries(placeHolders).forEach(([key, value]) => {
             text = text.replace(`{${key}}`, value)
