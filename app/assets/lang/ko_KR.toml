@@ -213,7 +213,7 @@ checking = "뉴스 확인 중.."
 [js.landing.discord]
 loading = "게임 불러오는 중.."
 joining = "서버 접속 중.."
-joined = "플레이 중"
+joined = "서버 플레이 중"
 
 [js.overlay]
 dismiss = "닫기"
