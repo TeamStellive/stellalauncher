@@ -14,9 +14,6 @@ const { pathToFileURL }                 = require('url')
 const { AZURE_CLIENT_ID, MSFT_OPCODE, MSFT_REPLY_TYPE, MSFT_ERROR, SHELL_OPCODE } = require('./app/assets/js/ipcconstants')
 const LangLoader                        = require('./app/assets/js/langloader')
 
-// Setup Lang
-LangLoader.setupLanguage()
-
 // Setup auto updater.
 const AUTO_UPDATE_REPOSITORY = {
     owner: 'TeamStellive',
@@ -248,8 +245,8 @@ ipcMain.on(MSFT_OPCODE.OPEN_LOGIN, (ipcEvent, ...arguments_) => {
             let queryMap = {}
             
             new URL(uri).searchParams.forEach((v, k) => {
-                queryMap[k] = v;
-            });
+                queryMap[k] = v
+            })
 
             ipcEvent.reply(MSFT_OPCODE.REPLY_LOGIN, MSFT_REPLY_TYPE.SUCCESS, queryMap, msftAuthViewSuccess)
 
@@ -439,8 +436,11 @@ function getPlatformIcon(filename){
     return path.join(__dirname, 'app', 'assets', 'images', `${filename}.${ext}`)
 }
 
-app.on('ready', createWindow)
-app.on('ready', createMenu)
+app.on('ready', async () => {
+    await LangLoader.setupLanguageRemote()
+    createWindow()
+    createMenu()
+})
 
 app.on('window-all-closed', () => {
     // On macOS it is common for applications and their menu bar

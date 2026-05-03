@@ -17,11 +17,6 @@ logger.info('Loading..')
 // Load ConfigManager
 ConfigManager.load()
 
-// Yuck!
-// TODO Fix this
-DistroAPI['commonDir'] = ConfigManager.getCommonDirectory()
-DistroAPI['instanceDir'] = ConfigManager.getInstanceDirectory()
-
 // Load Strings
 LangLoader.setupLanguage()
 
@@ -42,26 +37,41 @@ function onDistroLoad(data){
     ipcRenderer.send('distributionIndexDone', data != null)
 }
 
-// Ensure Distribution is downloaded and cached.
-DistroAPI.getDistribution()
-    .then(heliosDistro => {
-        logger.info('Loaded distribution index.')
-
-        onDistroLoad(heliosDistro)
-    })
-    .catch(err => {
-        logger.info('Failed to load an older version of the distribution index.')
-        logger.info('Application cannot run.')
-        logger.error(err)
-
-        onDistroLoad(null)
-    })
-
-// Clean up temp dir incase previous launches ended unexpectedly. 
-fs.remove(path.join(os.tmpdir(), ConfigManager.getTempNativeFolder()), (err) => {
-    if(err){
-        logger.warn('Error while cleaning natives directory', err)
-    } else {
-        logger.info('Cleaned natives directory.')
+async function initPreloader() {
+    try {
+        await LangLoader.setupLanguageRemote()
+    } catch(err) {
+        logger.warn('Unable to finish remote language setup, using local language files.', err)
     }
-})
+
+    // Yuck!
+    // TODO Fix this
+    DistroAPI['commonDir'] = ConfigManager.getCommonDirectory()
+    DistroAPI['instanceDir'] = ConfigManager.getInstanceDirectory()
+
+    // Ensure Distribution is downloaded and cached.
+    DistroAPI.getDistribution()
+        .then(heliosDistro => {
+            logger.info('Loaded distribution index.')
+
+            onDistroLoad(heliosDistro)
+        })
+        .catch(err => {
+            logger.info('Failed to load an older version of the distribution index.')
+            logger.info('Application cannot run.')
+            logger.error(err)
+
+            onDistroLoad(null)
+        })
+
+    // Clean up temp dir incase previous launches ended unexpectedly.
+    fs.remove(path.join(os.tmpdir(), ConfigManager.getTempNativeFolder()), (err) => {
+        if(err){
+            logger.warn('Error while cleaning natives directory', err)
+        } else {
+            logger.info('Cleaned natives directory.')
+        }
+    })
+}
+
+initPreloader()

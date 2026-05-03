@@ -639,8 +639,15 @@ let hasRPC = false
 // Joined server regex
 // Change this if your server uses something different.
 const GAME_JOINED_REGEX = /\[.+\]: Sound engine started/
+const SERVER_JOINED_REGEXES = [
+    /\[.+\]: Loaded \d+ advancements/
+]
+const SERVER_CONNECTING_REGEX = /\[.+\]: Connecting to .+/
+const SERVER_DISCONNECTED_REGEX = /\[.+\]: (?:Disconnecting from server|Failed to connect to server|Connection refused|Timed out)/
 const GAME_LAUNCH_REGEX = /^\[.+\]: (?:MinecraftForge .+ Initialized|ModLauncher .+ starting: .+|Loading Minecraft .+ with Fabric Loader .+)$/
 const MIN_LINGER = 5000
+const RPC_JOIN_FALLBACK_DELAY = 30000
+const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 async function dlAsync(login = true) {
 
@@ -655,6 +662,11 @@ async function dlAsync(login = true) {
 
     try {
         distro = await DistroAPI.refreshDistributionOrFallback()
+        if(distro.getServerById(ConfigManager.getSelectedServer()) == null){
+            loggerLaunchSuite.info('Selected server no longer exists in refreshed distribution, selecting main server.')
+            ConfigManager.setSelectedServer(distro.getMainServer().rawServer.id)
+            ConfigManager.save()
+        }
         onDistroRefresh(distro)
     } catch(err) {
         loggerLaunchSuite.error('Unable to refresh distribution index.', err)
@@ -778,9 +790,29 @@ async function dlAsync(login = true) {
         loggerLaunchSuite.info(`Sending selected account (${authUser.displayName}) to ProcessBuilder.`)
         let pb = new ProcessBuilder(serv, versionData, modLoaderData, authUser, remote.app.getVersion())
         setLaunchDetails(Lang.queryJS('landing.dlAsync.launchingGame'))
+        const playerJoinedRegex = new RegExp(`\\[.+\\]: (?:\\[CHAT\\]|\\[System\\] \\[CHAT\\]) ${escapeRegex(authUser.displayName)} joined the game`)
 
-        // const SERVER_JOINED_REGEX = /\[.+\]: \[CHAT\] [a-zA-Z0-9_]{1,16} joined the game/
-        const SERVER_JOINED_REGEX = new RegExp(`\\[.+\\]: \\[CHAT\\] ${authUser.displayName} joined the game`)
+        let rpcJoinFallback
+        const clearRpcJoinFallback = () => {
+            if(rpcJoinFallback){
+                clearTimeout(rpcJoinFallback)
+                rpcJoinFallback = null
+            }
+        }
+        const updateRpcDetails = (details) => {
+            if(hasRPC){
+                DiscordWrapper.updateDetails(details)
+            }
+        }
+        const updateRpcJoined = () => {
+            clearRpcJoinFallback()
+            updateRpcDetails(Lang.queryJS('landing.discord.joined'))
+        }
+        const updateRpcJoining = () => {
+            updateRpcDetails(Lang.queryJS('landing.discord.joining'))
+            clearRpcJoinFallback()
+            rpcJoinFallback = setTimeout(updateRpcJoined, RPC_JOIN_FALLBACK_DELAY)
+        }
 
         const onLoadComplete = () => {
             toggleLaunchArea(false)
@@ -811,10 +843,12 @@ async function dlAsync(login = true) {
         // Listener for Discord RPC.
         const gameStateChange = function(data){
             data = data.trim()
-            if(SERVER_JOINED_REGEX.test(data)){
-                DiscordWrapper.updateDetails(Lang.queryJS('landing.discord.joined'))
-            } else if(GAME_JOINED_REGEX.test(data)){
-                DiscordWrapper.updateDetails(Lang.queryJS('landing.discord.joining'))
+            if(playerJoinedRegex.test(data) || SERVER_JOINED_REGEXES.some(regex => regex.test(data))){
+                updateRpcJoined()
+            } else if(SERVER_DISCONNECTED_REGEX.test(data)){
+                clearRpcJoinFallback()
+            } else if(GAME_JOINED_REGEX.test(data) || SERVER_CONNECTING_REGEX.test(data)){
+                updateRpcJoining()
             }
         }
 
@@ -842,6 +876,7 @@ async function dlAsync(login = true) {
                 hasRPC = true
                 proc.on('close', (code, signal) => {
                     loggerLaunchSuite.info('Shutting down Discord Rich Presence..')
+                    clearRpcJoinFallback()
                     DiscordWrapper.shutdownRPC()
                     hasRPC = false
                     proc = null
