@@ -69,11 +69,13 @@ exports.setupLanguage = function(){
 exports.setupLanguageRemote = async function(){
     lang = {}
 
+    // Load local language first
+    exports.loadLanguage('ko_KR')
+
     try {
         await exports.loadRemoteLanguage('ko_KR')
     } catch(err) {
-        logger.warn('Unable to load remote language ko_KR, falling back to local file.', err)
-        exports.loadLanguage('ko_KR')
+        logger.warn('Unable to load remote language ko_KR, using local file.', err)
     }
 
     // Load Custom Language File for Launcher Customizer

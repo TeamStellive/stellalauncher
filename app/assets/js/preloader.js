@@ -19,7 +19,7 @@ logger.info('Loading..')
 ConfigManager.load()
 
 // Load Strings
-LangLoader.setupLanguage()
+// LangLoader.setupLanguage() // Removed to use remote first
 
 /**
  * 
