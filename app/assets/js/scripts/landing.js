@@ -244,7 +244,7 @@ const refreshMojangStatuses = async function(){
     document.getElementById('mojang_status_icon').style.color = MojangRestAPI.statusToHex(status)
 }
 
-const refreshServerStatus = async (fade = false) => {
+async function refreshServerStatus(fade = false) {
     loggerLanding.info('Refreshing Server Status')
     const serv = (await DistroAPI.getDistribution()).getServerById(ConfigManager.getSelectedServer())
 
