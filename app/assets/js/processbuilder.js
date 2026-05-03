@@ -3,7 +3,7 @@ const child_process         = require('child_process')
 const crypto                = require('crypto')
 const fs                    = require('fs-extra')
 const { LoggerUtil }        = require('helios-core')
-const { getMojangOS, isLibraryCompatible, mcVersionAtLeast }  = require('helios-core/common')
+const { getMojangOS, isLibraryCompatible, mcVersionAtLeast, MavenUtil }  = require('helios-core/common')
 const { Type }              = require('helios-distribution-types')
 const os                    = require('os')
 const path                  = require('path')
@@ -838,13 +838,23 @@ class ProcessBuilder {
                 continue
             }
 
-            const artifact = lib.downloads?.artifact
+            const artifact = lib.downloads?.artifact ?? this._resolveMavenLibraryArtifact(lib)
             if(artifact?.path != null){
                 libs[this._getLibraryClasspathKey(lib.name)] = path.join(this.libPath, artifact.path)
             }
         }
 
         return libs
+    }
+
+    _resolveMavenLibraryArtifact(lib) {
+        if(lib?.name == null || lib?.url == null){
+            return null
+        }
+
+        return {
+            path: MavenUtil.mavenIdentifierAsPath(lib.name)
+        }
     }
 
     _getNeoForgeVersion() {

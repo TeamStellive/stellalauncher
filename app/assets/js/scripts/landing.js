@@ -15,7 +15,8 @@ const {
     isDisplayableError,
     validateLocalFile,
     getMojangOS,
-    isLibraryCompatible
+    isLibraryCompatible,
+    MavenUtil
 }                             = require('helios-core/common')
 const {
     FullRepair,
@@ -450,7 +451,7 @@ function resolveLibraryArtifact(libEntry) {
     }
 
     if(libEntry.natives == null){
-        return libEntry.downloads?.artifact ?? null
+        return libEntry.downloads?.artifact ?? resolveMavenLibraryArtifact(libEntry)
     }
 
     const classifierTemplate = libEntry.natives[getMojangOS()]
@@ -460,6 +461,21 @@ function resolveLibraryArtifact(libEntry) {
 
     const classifier = classifierTemplate.replace('${arch}', process.arch.replace('x', ''))
     return libEntry.downloads?.classifiers?.[classifier] ?? null
+}
+
+function resolveMavenLibraryArtifact(libEntry) {
+    if(libEntry?.name == null || libEntry?.url == null){
+        return null
+    }
+
+    const baseUrl = libEntry.url.endsWith('/') ? libEntry.url : `${libEntry.url}/`
+    const artifactPath = MavenUtil.mavenIdentifierAsPath(libEntry.name)
+    return {
+        path: artifactPath,
+        url: new URL(artifactPath, baseUrl).toString(),
+        sha1: libEntry.sha1,
+        size: libEntry.size
+    }
 }
 
 async function validateModLoaderLibraries(modLoaderData) {

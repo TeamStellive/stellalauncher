@@ -1,5 +1,6 @@
 // Requirements
 const os     = require('os')
+const { pathToFileURL } = require('url')
 const semver = require('semver')
 
 const DropinModUtil  = require('./assets/js/dropinmodutil')
@@ -9,6 +10,7 @@ const SettingsJavaGuard = require('helios-core/java')
 const settingsState = {
     invalid: new Set()
 }
+let skinview3dLoader = null
 
 function bindSettingsSelect(){
     for(let ele of document.getElementsByClassName('settingsSelectContainer')) {
@@ -526,6 +528,11 @@ function bindAuthAccountSkinUpload(){
                 return
             }
 
+            const selectedVariant = await showSkinUploadPreview(result.filePaths[0], parent.querySelector('.settingsAuthAccountSkinVariant').value)
+            if(selectedVariant == null){
+                return
+            }
+
             const previousText = val.innerHTML
             val.disabled = true
             val.innerHTML = Lang.queryJS('settings.authAccountSkin.uploading')
@@ -545,7 +552,8 @@ function bindAuthAccountSkinUpload(){
                 }
 
                 const refreshedAccount = ConfigManager.getAuthAccount(uuid)
-                const variant = parent.querySelector('.settingsAuthAccountSkinVariant').value
+                const variant = selectedVariant
+                parent.querySelector('.settingsAuthAccountSkinVariant').value = variant
 
                 await AuthManager.uploadMinecraftSkin(refreshedAccount.uuid, result.filePaths[0], variant)
                 refreshSkinImages(refreshedAccount)
@@ -557,6 +565,105 @@ function bindAuthAccountSkinUpload(){
                 val.innerHTML = previousText
             }
         }
+    })
+}
+
+async function loadSkinview3d(){
+    if(skinview3dLoader == null){
+        skinview3dLoader = import('skinview3d')
+    }
+    return await skinview3dLoader
+}
+
+function mapSkinVariantToViewerModel(variant){
+    return variant === 'slim' ? 'slim' : 'default'
+}
+
+async function showSkinUploadPreview(skinPath, initialVariant){
+    const skinUrl = pathToFileURL(skinPath).toString()
+
+    setOverlayContent(
+        Lang.queryJS('settings.authAccountSkin.previewTitle'),
+        `<div class="skinUploadPreview">
+            <canvas id="skinUploadPreviewCanvas" width="220" height="300"></canvas>
+            <div class="skinUploadPreviewControls">
+                <label>
+                    <input type="radio" name="skinUploadPreviewVariant" value="classic" ${initialVariant === 'slim' ? '' : 'checked'}>
+                    <span>${Lang.queryJS('settings.authAccountSkin.classic')}</span>
+                </label>
+                <label>
+                    <input type="radio" name="skinUploadPreviewVariant" value="slim" ${initialVariant === 'slim' ? 'checked' : ''}>
+                    <span>${Lang.queryJS('settings.authAccountSkin.slim')}</span>
+                </label>
+            </div>
+        </div>`,
+        Lang.queryJS('settings.authAccountSkin.confirmUpload'),
+        Lang.queryJS('settings.authAccountSkin.cancelUpload')
+    )
+
+    const overlayContent = document.getElementById('overlayContent')
+    overlayContent.classList.add('skinPreviewOverlay')
+
+    return await new Promise(resolve => {
+        let resolved = false
+        let skinViewer = null
+
+        const cleanup = () => {
+            if(skinViewer != null){
+                skinViewer.dispose()
+                skinViewer = null
+            }
+            overlayContent.classList.remove('skinPreviewOverlay')
+        }
+
+        const finish = value => {
+            if(resolved){
+                return
+            }
+            resolved = true
+            cleanup()
+            toggleOverlay(false)
+            resolve(value)
+        }
+
+        setOverlayHandler(() => {
+            const checked = document.querySelector('input[name="skinUploadPreviewVariant"]:checked')
+            finish(checked?.value ?? 'classic')
+        })
+        setDismissHandler(() => {
+            finish(null)
+        })
+        toggleOverlay(true, true)
+
+        loadSkinview3d().then(skinview3d => {
+            if(resolved){
+                return
+            }
+            const canvas = document.getElementById('skinUploadPreviewCanvas')
+            skinViewer = new skinview3d.SkinViewer({
+                canvas,
+                width: 220,
+                height: 300,
+                skin: skinUrl,
+                model: mapSkinVariantToViewerModel(initialVariant),
+                enableControls: true,
+                background: 0x101010,
+                zoom: 0.82
+            })
+            skinViewer.autoRotate = true
+            skinViewer.autoRotateSpeed = 0.8
+
+            Array.from(document.querySelectorAll('input[name="skinUploadPreviewVariant"]')).forEach(input => {
+                input.onchange = () => {
+                    skinViewer.loadSkin(skinUrl, {
+                        model: mapSkinVariantToViewerModel(input.value)
+                    })
+                }
+            })
+        }).catch(err => {
+            finish(null)
+            showSkinUploadError(err.message || Lang.queryJS('settings.authAccountSkin.failureMessage'))
+        })
     })
 }
 

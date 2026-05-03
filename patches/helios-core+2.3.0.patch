@@ -46,10 +46,24 @@ index d2d927f..08d9cc1 100644
          return this.mavenComponents != null;
      }
 diff --git a/node_modules/helios-core/dist/dl/DownloadEngine.js b/node_modules/helios-core/dist/dl/DownloadEngine.js
-index 922cd1a..71443ac 100644
+index 922cd1a..ca915f2 100644
 --- a/node_modules/helios-core/dist/dl/DownloadEngine.js
 +++ b/node_modules/helios-core/dist/dl/DownloadEngine.js
-@@ -65,7 +65,8 @@ async function downloadQueue(assets, onProgress) {
+@@ -45,6 +45,13 @@ const path_1 = require("path");
+ const LoggerUtil_1 = require("../util/LoggerUtil");
+ const NodeUtil_1 = require("../util/NodeUtil");
+ const log = LoggerUtil_1.LoggerUtil.getLogger('DownloadEngine');
++const BROWSER_DOWNLOAD_HEADERS = {
++    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
++    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/java-archive,application/octet-stream,*/*;q=0.8',
++    'accept-language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
++    'cache-control': 'no-cache',
++    'pragma': 'no-cache'
++};
+ function getExpectedDownloadSize(assets) {
+     return assets.map(({ size }) => size).reduce((acc, v) => acc + v, 0);
+ }
+@@ -65,7 +72,8 @@ async function downloadQueue(assets, onProgress) {
      return receivedTotals;
  }
  async function downloadFile(url, path, onProgress) {
@@ -59,16 +73,20 @@ index 922cd1a..71443ac 100644
      const MAX_RETRIES = 10;
      let fileWriterStream = null; // The write stream.
      let retryCount = 0; // The number of retries attempted.
-@@ -83,7 +84,7 @@ async function downloadFile(url, path, onProgress) {
+@@ -82,8 +90,10 @@ async function downloadFile(url, path, onProgress) {
+             log.debug(`Retry attempt #${retryCount} for ${url}.`);
          }
          try {
-             const downloadStream = got_1.default.stream(url);
+-            const downloadStream = got_1.default.stream(url);
 -            fileWriterStream = (0, fs_1.createWriteStream)(path);
++            const downloadStream = got_1.default.stream(url, {
++                headers: BROWSER_DOWNLOAD_HEADERS
++            });
 +            fileWriterStream = (0, fs_1.createWriteStream)(safePath);
              if (onProgress) {
                  downloadStream.on('downloadProgress', (progress) => onProgress(progress));
              }
-@@ -119,6 +120,13 @@ async function downloadFile(url, path, onProgress) {
+@@ -119,6 +129,13 @@ async function downloadFile(url, path, onProgress) {
          throw error;
      }
  }
@@ -83,10 +101,52 @@ index 922cd1a..71443ac 100644
      if (error instanceof got_1.RequestError) {
          // error.name === 'RequestError' means server did not respond.
 diff --git a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js b/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
-index f09b6b4..7e1eed9 100644
+index f09b6b4..c024737 100644
 --- a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
 +++ b/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
-@@ -76,7 +76,9 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+@@ -46,14 +46,19 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+     }
+     async validateModules(modules, accumulator) {
+         for (const module of modules) {
+-            const hash = module.rawModule.artifact.MD5;
+-            if (!await (0, FileUtils_1.validateLocalFile)(module.getPath(), Asset_1.HashAlgo.MD5, hash)) {
++            const artifact = module.rawModule.artifact;
++            const hash = artifact.MD5 || artifact.hash || artifact.sha1;
++            const algo = artifact.sha1 || hash?.length === 40 ? Asset_1.HashAlgo.SHA1 : Asset_1.HashAlgo.MD5;
++            const valid = hash
++                ? await (0, FileUtils_1.validateLocalFile)(module.getPath(), algo, hash)
++                : await this.validateLocalFileSize(module.getPath(), artifact.size);
++            if (!valid) {
+                 accumulator.push({
+                     id: module.rawModule.id,
+                     hash: hash,
+-                    algo: Asset_1.HashAlgo.MD5,
+-                    size: module.rawModule.artifact.size,
+-                    url: module.rawModule.artifact.url,
++                    algo: algo,
++                    size: artifact.size,
++                    url: artifact.url,
+                     path: module.getPath()
+                 });
+             }
+@@ -62,6 +67,16 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+             }
+         }
+     }
++    async validateLocalFileSize(path, size) {
++        if (!await (0, fs_extra_1.pathExists)(path)) {
++            return false;
++        }
++        if (size == null) {
++            return true;
++        }
++        const stats = await (0, fs_extra_1.stat)(path);
++        return stats.size === size;
++    }
+     async loadModLoaderVersionJson() {
+         const server = this.distribution.getServerById(this.serverId);
+         if (server == null) {
+@@ -76,7 +91,9 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
              return await this.loadVersionManifest(modLoaderModule);
          }
          else {
@@ -97,7 +157,7 @@ index f09b6b4..7e1eed9 100644
              try {
                  const data = JSON.parse((await zip.entryData('version.json')).toString('utf8'));
                  const writePath = (0, FileUtils_1.getVersionJsonPath)(this.commonDir, data.id);
-@@ -89,12 +91,24 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+@@ -89,12 +106,24 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
              }
          }
      }
@@ -124,10 +184,22 @@ index f09b6b4..7e1eed9 100644
      // TODO Move this to a util maybe
      static isForgeGradle3(mcVersion, forgeVersion) {
 diff --git a/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js b/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js
-index 89fe157..8247234 100644
+index 89fe157..f0de46b 100644
 --- a/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js
 +++ b/node_modules/helios-core/dist/dl/receivers/FullRepairReceiver.js
-@@ -95,7 +95,7 @@ class FullRepairReceiver {
+@@ -5,9 +5,11 @@ const DistributionAPI_1 = require("../../common/distribution/DistributionAPI");
+ const DistributionIndexProcessor_1 = require("../distribution/DistributionIndexProcessor");
+ const DownloadEngine_1 = require("../DownloadEngine");
+ const MojangIndexProcessor_1 = require("../mojang/MojangIndexProcessor");
++const AssetGuardError_1 = require("../AssetGuardError");
+ const LoggerUtil_1 = require("../../util/LoggerUtil");
+ const FileUtils_1 = require("../../common/util/FileUtils");
+ const got_1 = require("got");
++const fs_extra_1 = require("fs-extra");
+ const log = LoggerUtil_1.LoggerUtil.getLogger('FullRepairReceiver');
+ class FullRepairReceiver {
+     processors = [];
+@@ -95,17 +97,23 @@ class FullRepairReceiver {
          // Reduce load on IPC channel by sending only whole numbers.
          let currentPercent = 0;
          const receivedEach = await (0, DownloadEngine_1.downloadQueue)(this.assets, received => {
@@ -136,6 +208,23 @@ index 89fe157..8247234 100644
              if (currentPercent !== nextPercent) {
                  currentPercent = nextPercent;
                  process.send({ response: 'downloadProgress', percent: currentPercent });
+             }
+         });
+         for (const asset of this.assets) {
+-            if (asset.size !== receivedEach[asset.id]) {
++            if (typeof asset.size === 'number' && asset.size !== receivedEach[asset.id]) {
+                 log.warn(`Asset ${asset.id} declared a size of ${asset.size} bytes, but ${receivedEach[asset.id]} were received!`);
++                await (0, fs_extra_1.remove)(asset.path);
++                throw new AssetGuardError_1.AssetGuardError(`Downloaded asset ${asset.id} is incomplete.`);
++            }
++            if (asset.hash != null) {
+                 if (!await (0, FileUtils_1.validateLocalFile)(asset.path, asset.algo, asset.hash)) {
++                    await (0, fs_extra_1.remove)(asset.path);
+                     log.error(`Hashes do not match, ${asset.id} may be corrupted.`);
++                    throw new AssetGuardError_1.AssetGuardError(`Downloaded asset ${asset.id} failed validation.`);
+                 }
+             }
+         }
 diff --git a/node_modules/helios-core/dist/dl/receivers/ReceiverExecutor.js b/node_modules/helios-core/dist/dl/receivers/ReceiverExecutor.js
 index 5f00414..fe3147e 100644
 --- a/node_modules/helios-core/dist/dl/receivers/ReceiverExecutor.js

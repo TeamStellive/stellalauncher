@@ -1,6 +1,6 @@
 {
   "name": "stellalauncher",
-  "version": "7.1.1",
+  "version": "7.1.2",
   "productName": "Stella Launcher",
   "description": "Modded Minecraft Launcher",
   "author": "sunharu0707",
@@ -39,6 +39,7 @@
     "jquery": "^3.7.1",
     "lodash.merge": "^4.6.2",
     "semver": "^7.7.3",
+    "skinview3d": "^3.4.2",
     "toml": "^3.0.0"
   },
   "devDependencies": {
