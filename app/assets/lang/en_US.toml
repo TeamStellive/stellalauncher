@@ -249,6 +249,22 @@ selectAccount = "Select Account"
 selectedAccount = "Selected Account ✓"
 logout = "Log Out"
 
+[js.settings.authAccountSkin]
+upload = "Change Skin"
+uploading = "Uploading..."
+classic = "Classic"
+slim = "Slim"
+selectDialogTitle = "Select Skin PNG"
+pngFiles = "PNG Images"
+successTitle = "Skin Changed"
+successMessage = "Your skin has been uploaded.<br><br>The launcher preview refreshes immediately. In-game skin changes may require reconnecting."
+failureTitle = "Skin Change Failed"
+failureMessage = "Failed to upload the skin. Make sure the file is a PNG and try again."
+authFailed = "Could not refresh Minecraft account authentication. Please log in again and retry."
+microsoftOnly = "Skin changes are only supported for Microsoft accounts."
+fileMissing = "The selected skin file could not be found."
+okButton = "OK"
+
 [js.settings.dropinMods]
 removeButton = "Remove"
 deleteFailedTitle = "Failed to Delete<br>Drop-in Mod {fullName}"

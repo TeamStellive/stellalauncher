@@ -1645,6 +1645,39 @@ input:checked + .toggleSwitchSlider:before {
     cursor: pointer;
     outline: none;
 }
+.settingsAuthAccountSkinVariant,
+.settingsAuthAccountSkinUpload {
+    opacity: 0;
+    margin-bottom: 6px;
+    color: white;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'Avenir Medium';
+    outline: none;
+    transition: 0.25s ease;
+}
+.settingsAuthAccountSkinVariant {
+    width: 100%;
+    padding: 2px 4px;
+}
+.settingsAuthAccountSkinUpload {
+    cursor: pointer;
+}
+.settingsAuthAccountSkinUpload:hover,
+.settingsAuthAccountSkinUpload:focus {
+    box-shadow: 0px 0px 20px rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.15);
+}
+.settingsAuthAccountSkinUpload:disabled {
+    cursor: default;
+    opacity: 0.65;
+}
+.settingsAuthAccount:hover .settingsAuthAccountSkinVariant,
+.settingsAuthAccount:hover .settingsAuthAccountSkinUpload {
+    opacity: 1;
+}
 .settingsAuthAccountLogOut:hover,
 .settingsAuthAccountLogOut:focus {
     box-shadow: 0px 0px 20px rgb(241, 55, 55);

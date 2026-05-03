@@ -502,6 +502,100 @@ function bindAuthAccountLogOut(){
     })
 }
 
+function bindAuthAccountSkinUpload(){
+    Array.from(document.getElementsByClassName('settingsAuthAccountSkinUpload')).map((val) => {
+        val.onclick = async () => {
+            const parent = val.closest('.settingsAuthAccount')
+            const uuid = parent.getAttribute('uuid')
+            const account = ConfigManager.getAuthAccount(uuid)
+
+            if(account?.type !== 'microsoft'){
+                showSkinUploadError(Lang.queryJS('settings.authAccountSkin.microsoftOnly'))
+                return
+            }
+
+            const result = await remote.dialog.showOpenDialog(remote.getCurrentWindow(), {
+                title: Lang.queryJS('settings.authAccountSkin.selectDialogTitle'),
+                properties: ['openFile'],
+                filters: [
+                    { name: Lang.queryJS('settings.authAccountSkin.pngFiles'), extensions: ['png'] }
+                ]
+            })
+
+            if(result.canceled){
+                return
+            }
+
+            const previousText = val.innerHTML
+            val.disabled = true
+            val.innerHTML = Lang.queryJS('settings.authAccountSkin.uploading')
+
+            try {
+                if(ConfigManager.getSelectedAccount()?.uuid !== uuid){
+                    const selected = ConfigManager.setSelectedAccount(uuid)
+                    ConfigManager.save()
+                    refreshAuthAccountSelected(uuid)
+                    updateSelectedAccount(selected)
+                }
+
+                const authValid = await AuthManager.validateSelected()
+
+                if(!authValid){
+                    throw new Error(Lang.queryJS('settings.authAccountSkin.authFailed'))
+                }
+
+                const refreshedAccount = ConfigManager.getAuthAccount(uuid)
+                const variant = parent.querySelector('.settingsAuthAccountSkinVariant').value
+
+                await AuthManager.uploadMinecraftSkin(refreshedAccount.uuid, result.filePaths[0], variant)
+                refreshSkinImages(refreshedAccount)
+                showSkinUploadSuccess()
+            } catch(err) {
+                showSkinUploadError(err.message || Lang.queryJS('settings.authAccountSkin.failureMessage'))
+            } finally {
+                val.disabled = false
+                val.innerHTML = previousText
+            }
+        }
+    })
+}
+
+function refreshSkinImages(account){
+    const cacheKey = Date.now()
+
+    Array.from(document.querySelectorAll(`.settingsAuthAccount[uuid="${account.uuid}"] .settingsAuthAccountImage`)).forEach(img => {
+        img.src = `https://mc-heads.net/body/${account.uuid}/60?${cacheKey}`
+    })
+
+    if(ConfigManager.getSelectedAccount()?.uuid === account.uuid){
+        document.getElementById('avatarContainer').style.backgroundImage = `url('https://mc-heads.net/body/${account.uuid}/right?${cacheKey}')`
+    }
+}
+
+function showSkinUploadSuccess(){
+    setOverlayContent(
+        Lang.queryJS('settings.authAccountSkin.successTitle'),
+        Lang.queryJS('settings.authAccountSkin.successMessage'),
+        Lang.queryJS('settings.authAccountSkin.okButton')
+    )
+    setOverlayHandler(() => {
+        toggleOverlay(false)
+    })
+    toggleOverlay(true)
+}
+
+function showSkinUploadError(message){
+    setOverlayContent(
+        Lang.queryJS('settings.authAccountSkin.failureTitle'),
+        message,
+        Lang.queryJS('settings.authAccountSkin.okButton')
+    )
+    setOverlayHandler(() => {
+        toggleOverlay(false)
+    })
+    toggleOverlay(true)
+}
+
 let msAccDomElementCache
 /**
  * Process a log out.
@@ -657,6 +751,11 @@ function populateAuthAccounts(){
                 <div class="settingsAuthAccountActions">
                     <button class="settingsAuthAccountSelect" ${selectedUUID === acc.uuid ? 'selected>' + Lang.queryJS('settings.authAccountPopulate.selectedAccount') : '>' + Lang.queryJS('settings.authAccountPopulate.selectAccount')}</button>
                     <div class="settingsAuthAccountWrapper">
+                        ${acc.type === 'microsoft' ? `<select class="settingsAuthAccountSkinVariant">
+                            <option value="classic">${Lang.queryJS('settings.authAccountSkin.classic')}</option>
+                            <option value="slim">${Lang.queryJS('settings.authAccountSkin.slim')}</option>
+                        </select>
+                        <button class="settingsAuthAccountSkinUpload">${Lang.queryJS('settings.authAccountSkin.upload')}</button>` : ''}
                         <button class="settingsAuthAccountLogOut">${Lang.queryJS('settings.authAccountPopulate.logout')}</button>
                     </div>
                 </div>
@@ -681,6 +780,7 @@ function populateAuthAccounts(){
 function prepareAccountsTab() {
     populateAuthAccounts()
     bindAuthAccountSelect()
+    bindAuthAccountSkinUpload()
     bindAuthAccountLogOut()
 }
 

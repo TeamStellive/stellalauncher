@@ -9,7 +9,11 @@
  * @module authmanager
  */
 // Requirements
+const fs                     = require('fs-extra')
+const nodePath               = require('path')
 const ConfigManager          = require('./configmanager')
+const FormData               = require('form-data')
+const got                    = require('got')
 const { LoggerUtil }         = require('helios-core')
 const { RestResponseStatus } = require('helios-core/common')
 const { MojangRestAPI, MojangErrorCode } = require('helios-core/mojang')
@@ -18,6 +22,7 @@ const { AZURE_CLIENT_ID }    = require('./ipcconstants')
 const Lang = require('./langloader')
 
 const log = LoggerUtil.getLogger('AuthManager')
+const MINECRAFT_PROFILE_SKINS_URL = 'https://api.minecraftservices.com/minecraft/profile/skins'
 
 // Error messages
 
@@ -314,6 +319,36 @@ exports.removeMicrosoftAccount = async function(uuid){
         log.error('Error while removing account', err)
         return Promise.reject(err)
     }
+}
+
+exports.uploadMinecraftSkin = async function(uuid, skinPath, variant){
+    const account = ConfigManager.getAuthAccount(uuid)
+
+    if(account == null || account.type !== 'microsoft'){
+        throw new Error(Lang.queryJS('settings.authAccountSkin.microsoftOnly'))
+    }
+
+    if(!await fs.pathExists(skinPath)){
+        throw new Error(Lang.queryJS('settings.authAccountSkin.fileMissing'))
+    }
+
+    const form = new FormData()
+    form.append('variant', variant)
+    form.append('file', fs.createReadStream(skinPath), {
+        filename: nodePath.basename(skinPath),
+        contentType: 'image/png'
+    })
+
+    await got.post(MINECRAFT_PROFILE_SKINS_URL, {
+        body: form,
+        headers: {
+            Authorization: `Bearer ${account.accessToken}`,
+            ...form.getHeaders()
+        },
+        timeout: {
+            request: 30000
+        }
+    })
 }
 
 /**

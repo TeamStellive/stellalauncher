@@ -662,12 +662,7 @@ async function dlAsync(login = true) {
 
     try {
         distro = await DistroAPI.refreshDistributionOrFallback()
-        if(distro.getServerById(ConfigManager.getSelectedServer()) == null){
-            loggerLaunchSuite.info('Selected server no longer exists in refreshed distribution, selecting main server.')
-            ConfigManager.setSelectedServer(distro.getMainServer().rawServer.id)
-            ConfigManager.save()
-        }
-        onDistroRefresh(distro)
+        await onDistroRefresh(distro)
     } catch(err) {
         loggerLaunchSuite.error('Unable to refresh distribution index.', err)
         showLaunchFailure(Lang.queryJS('landing.dlAsync.fatalError'), Lang.queryJS('landing.dlAsync.unableToLoadDistributionIndex'))

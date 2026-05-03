@@ -512,6 +512,33 @@ exports.setModConfiguration = function(serverid, configuration){
     cfgs.push(configuration)
 }
 
+exports.migrateServerConfig = function(oldId, newId){
+    let migrated = false
+
+    if(config.selectedServer === oldId){
+        config.selectedServer = newId
+        migrated = true
+    }
+
+    const oldModConfig = exports.getModConfiguration(oldId)
+
+    if(oldModConfig != null && exports.getModConfiguration(newId) == null){
+        exports.setModConfiguration(newId, {
+            ...oldModConfig,
+            id: newId
+        })
+        migrated = true
+    }
+
+    if(Object.prototype.hasOwnProperty.call(config.javaConfig, oldId)
+        && !Object.prototype.hasOwnProperty.call(config.javaConfig, newId)){
+        config.javaConfig[newId] = JSON.parse(JSON.stringify(config.javaConfig[oldId]))
+        migrated = true
+    }
+
+    return migrated
+}
+
 // User Configurable Settings
 
 // Java Settings

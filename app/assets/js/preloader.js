@@ -6,6 +6,7 @@ const path           = require('path')
 const ConfigManager  = require('./configmanager')
 const { DistroAPI }  = require('./distromanager')
 const LangLoader     = require('./langloader')
+const { migrateLegacyServerData } = require('./servermigration')
 const { LoggerUtil } = require('helios-core')
 // eslint-disable-next-line no-unused-vars
 const { HeliosDistribution } = require('helios-core/common')
@@ -24,9 +25,10 @@ LangLoader.setupLanguage()
  * 
  * @param {HeliosDistribution} data 
  */
-function onDistroLoad(data){
+async function onDistroLoad(data){
     if(data != null){
-        
+        await migrateLegacyServerData(data)
+
         // Resolve the selected server if its value has yet to be set.
         if(ConfigManager.getSelectedServer() == null || data.getServerById(ConfigManager.getSelectedServer()) == null){
             logger.info('Determining default selected server..')
@@ -51,17 +53,17 @@ async function initPreloader() {
 
     // Ensure Distribution is downloaded and cached.
     DistroAPI.getDistribution()
-        .then(heliosDistro => {
+        .then(async heliosDistro => {
             logger.info('Loaded distribution index.')
 
-            onDistroLoad(heliosDistro)
+            await onDistroLoad(heliosDistro)
         })
-        .catch(err => {
+        .catch(async err => {
             logger.info('Failed to load an older version of the distribution index.')
             logger.info('Application cannot run.')
             logger.error(err)
 
-            onDistroLoad(null)
+            await onDistroLoad(null)
         })
 
     // Clean up temp dir incase previous launches ended unexpectedly.

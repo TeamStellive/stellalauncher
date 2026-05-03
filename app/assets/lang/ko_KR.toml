@@ -249,6 +249,22 @@ selectAccount = "계정 선택"
 selectedAccount = "계정 선택 됨 ✓"
 logout = "로그아웃"
 
+[js.settings.authAccountSkin]
+upload = "스킨 변경"
+uploading = "업로드 중..."
+classic = "클래식"
+slim = "슬림"
+selectDialogTitle = "스킨 PNG 선택"
+pngFiles = "PNG 이미지"
+successTitle = "스킨 변경 완료"
+successMessage = "스킨이 업로드되었습니다.<br><br>런처 미리보기는 바로 갱신되며, 게임 안에서는 재접속 후 반영될 수 있습니다."
+failureTitle = "스킨 변경 실패"
+failureMessage = "스킨 업로드에 실패했습니다. PNG 파일인지 확인한 뒤 다시 시도해주세요."
+authFailed = "Minecraft 계정 인증을 갱신하지 못했습니다. 다시 로그인한 뒤 시도해주세요."
+microsoftOnly = "Microsoft 계정에서만 스킨 변경을 지원합니다."
+fileMissing = "선택한 스킨 파일을 찾을 수 없습니다."
+okButton = "확인"
+
 [js.settings.dropinMods]
 removeButton = "삭제"
 deleteFailedTitle = "모드 삭제에 실패했습니다.<br>모드 이름: {fullName}"

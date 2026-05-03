@@ -382,6 +382,8 @@ class ProcessBuilder {
     _constructStellaJvmArguments(){
         return [
             '-Dstella.launcher=true',
+            `-Dstella.launcherVersion=${this.launcherVersion}`,
+            `-Dstella.launcher.version=${this.launcherVersion}`,
             `-Dstella.selectedServerId=${this.server.rawServer.id}`,
             `-Dstella.distributionUrl=${REMOTE_DISTRO_URL}`,
             `-Dstella.serverAddress=${this.server.hostname}:${this.server.port}`,

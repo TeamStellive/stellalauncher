@@ -9,6 +9,7 @@ const { Type }      = require('helios-distribution-types')
 const AuthManager   = require('./assets/js/authmanager')
 const ConfigManager = require('./assets/js/configmanager')
 const { DistroAPI } = require('./assets/js/distromanager')
+const { migrateLegacyServerData } = require('./assets/js/servermigration')
 
 let rscShouldLoad = false
 let fatalStartupError = false
@@ -130,7 +131,8 @@ function showFatalStartupError(){
  *
  * @param {Object} data The distro index object.
  */
-function onDistroRefresh(data){
+async function onDistroRefresh(data){
+    await migrateLegacyServerData(data)
     updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()))
     refreshServerStatus()
     initNews()
