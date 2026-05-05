@@ -11,6 +11,12 @@ const settingsState = {
     invalid: new Set()
 }
 let skinview3dLoader = null
+const skinUploadState = {
+    viewer: null,
+    selectedFile: null,
+    previewNonce: 0,
+    renderFrame: null
+}
 
 function bindSettingsSelect(){
     for(let ele of document.getElementsByClassName('settingsSelectContainer')) {
@@ -296,6 +302,11 @@ function settingsNavItemListener(ele, fade = true){
                     settingsTabScrollListener({
                         target: document.getElementById(selectedSettingsTab)
                     })
+                },
+                complete: () => {
+                    if(selectedSettingsTab === 'settingsTabSkin'){
+                        updateSkinPreview()
+                    }
                 }
             })
         })
@@ -307,6 +318,11 @@ function settingsNavItemListener(ele, fade = true){
                     settingsTabScrollListener({
                         target: document.getElementById(selectedSettingsTab)
                     })
+                },
+                complete: () => {
+                    if(selectedSettingsTab === 'settingsTabSkin'){
+                        updateSkinPreview()
+                    }
                 }
             })
         })
@@ -506,71 +522,28 @@ function bindAuthAccountLogOut(){
 
 function bindAuthAccountSkinUpload(){
     Array.from(document.getElementsByClassName('settingsAuthAccountSkinUpload')).map((val) => {
-        val.onclick = async () => {
+        val.onclick = () => {
             const parent = val.closest('.settingsAuthAccount')
             const uuid = parent.getAttribute('uuid')
-            const account = ConfigManager.getAuthAccount(uuid)
-
-            if(account?.type !== 'microsoft'){
-                showSkinUploadError(Lang.queryJS('settings.authAccountSkin.microsoftOnly'))
-                return
-            }
-
-            const result = await remote.dialog.showOpenDialog(remote.getCurrentWindow(), {
-                title: Lang.queryJS('settings.authAccountSkin.selectDialogTitle'),
-                properties: ['openFile'],
-                filters: [
-                    { name: Lang.queryJS('settings.authAccountSkin.pngFiles'), extensions: ['png'] }
-                ]
-            })
-
-            if(result.canceled){
-                return
-            }
-
-            const selectedVariant = await showSkinUploadPreview(result.filePaths[0], parent.querySelector('.settingsAuthAccountSkinVariant').value)
-            if(selectedVariant == null){
-                return
-            }
-
-            const previousText = val.innerHTML
-            val.disabled = true
-            val.innerHTML = Lang.queryJS('settings.authAccountSkin.uploading')
-
-            try {
-                if(ConfigManager.getSelectedAccount()?.uuid !== uuid){
-                    const selected = ConfigManager.setSelectedAccount(uuid)
-                    ConfigManager.save()
-                    refreshAuthAccountSelected(uuid)
-                    updateSelectedAccount(selected)
-                }
-
-                const authValid = await AuthManager.validateSelected()
-
-                if(!authValid){
-                    throw new Error(Lang.queryJS('settings.authAccountSkin.authFailed'))
-                }
-
-                const refreshedAccount = ConfigManager.getAuthAccount(uuid)
-                const variant = selectedVariant
-                parent.querySelector('.settingsAuthAccountSkinVariant').value = variant
-
-                await AuthManager.uploadMinecraftSkin(refreshedAccount.uuid, result.filePaths[0], variant)
-                refreshSkinImages(refreshedAccount)
-                showSkinUploadSuccess()
-            } catch(err) {
-                showSkinUploadError(err.message || Lang.queryJS('settings.authAccountSkin.failureMessage'))
-            } finally {
-                val.disabled = false
-                val.innerHTML = previousText
-            }
+            openSkinSettingsTab(uuid)
         }
     })
 }
 
 async function loadSkinview3d(){
     if(skinview3dLoader == null){
-        skinview3dLoader = import('skinview3d')
+        skinview3dLoader = new Promise((resolve, reject) => {
+            if(window.skinview3d != null){
+                resolve(window.skinview3d)
+                return
+            }
+
+            const script = document.createElement('script')
+            script.src = pathToFileURL(require.resolve('skinview3d/bundles/skinview3d.bundle.js')).toString()
+            script.onload = () => resolve(window.skinview3d)
+            script.onerror = () => reject(new Error(Lang.queryJS('settings.authAccountSkin.failureMessage')))
+            document.head.appendChild(script)
+        })
     }
     return await skinview3dLoader
 }
@@ -579,92 +552,298 @@ function mapSkinVariantToViewerModel(variant){
     return variant === 'slim' ? 'slim' : 'default'
 }
 
-async function showSkinUploadPreview(skinPath, initialVariant){
-    const skinUrl = pathToFileURL(skinPath).toString()
+function renderSkinPreviewOnce(){
+    if(skinUploadState.renderFrame != null){
+        return
+    }
 
-    setOverlayContent(
-        Lang.queryJS('settings.authAccountSkin.previewTitle'),
-        `<div class="skinUploadPreview">
-            <canvas id="skinUploadPreviewCanvas" width="220" height="300"></canvas>
-            <div class="skinUploadPreviewControls">
-                <label>
-                    <input type="radio" name="skinUploadPreviewVariant" value="classic" ${initialVariant === 'slim' ? '' : 'checked'}>
-                    <span>${Lang.queryJS('settings.authAccountSkin.classic')}</span>
-                </label>
-                <label>
-                    <input type="radio" name="skinUploadPreviewVariant" value="slim" ${initialVariant === 'slim' ? 'checked' : ''}>
-                    <span>${Lang.queryJS('settings.authAccountSkin.slim')}</span>
-                </label>
-            </div>
-        </div>`,
-        Lang.queryJS('settings.authAccountSkin.confirmUpload'),
-        Lang.queryJS('settings.authAccountSkin.cancelUpload')
-    )
+    skinUploadState.renderFrame = window.requestAnimationFrame(() => {
+        skinUploadState.renderFrame = null
 
-    const overlayContent = document.getElementById('overlayContent')
-    overlayContent.classList.add('skinPreviewOverlay')
-
-    return await new Promise(resolve => {
-        let resolved = false
-        let skinViewer = null
-
-        const cleanup = () => {
-            if(skinViewer != null){
-                skinViewer.dispose()
-                skinViewer = null
-            }
-            overlayContent.classList.remove('skinPreviewOverlay')
+        if(skinUploadState.viewer == null || skinUploadState.viewer.disposed){
+            return
         }
 
-        const finish = value => {
-            if(resolved){
-                return
-            }
-            resolved = true
-            cleanup()
-            toggleOverlay(false)
-            resolve(value)
+        skinUploadState.viewer.controls?.update?.()
+        skinUploadState.viewer.render()
+    })
+}
+
+function bindSkinPreviewRenderEvents(canvas){
+    if(canvas.hasAttribute('skinPreviewRenderBound')){
+        return
+    }
+
+    canvas.setAttribute('skinPreviewRenderBound', '')
+    canvas.addEventListener('pointermove', renderSkinPreviewOnce)
+    canvas.addEventListener('wheel', renderSkinPreviewOnce, { passive: true })
+}
+
+function getSelectedSkinVariant(){
+    const checked = document.querySelector('input[name="settingsSkinVariant"]:checked')
+    return checked?.value === 'slim' ? 'slim' : 'classic'
+}
+
+function setSelectedSkinVariant(variant){
+    const normalizedVariant = variant === 'slim' ? 'slim' : 'classic'
+    const input = document.querySelector(`input[name="settingsSkinVariant"][value="${normalizedVariant}"]`)
+    if(input != null){
+        input.checked = true
+    }
+}
+
+function getSkinTabAccountSelect(){
+    return document.getElementById('settingsSkinAccountSelect')
+}
+
+function getSkinTabSelectedAccount(){
+    const uuid = getSkinTabAccountSelect()?.value
+    return uuid ? ConfigManager.getAuthAccount(uuid) : null
+}
+
+function setSkinStatus(message = '', isError = false){
+    const status = document.getElementById('settingsSkinStatus')
+    if(status == null){
+        return
+    }
+    status.innerHTML = message
+    status.toggleAttribute('error', isError)
+}
+
+function updateSkinApplyState(){
+    const applyButton = document.getElementById('settingsSkinApply')
+    if(applyButton != null){
+        applyButton.disabled = skinUploadState.selectedFile == null || getSkinTabSelectedAccount() == null
+    }
+}
+
+function setSkinSelectedFile(filePath){
+    skinUploadState.selectedFile = filePath
+    const selectedFile = document.getElementById('settingsSkinSelectedFile')
+    if(selectedFile != null){
+        selectedFile.innerHTML = filePath == null ? Lang.queryJS('settings.authAccountSkin.noFileSelected') : filePath.split(/[\\/]/).pop()
+        selectedFile.title = filePath || ''
+    }
+    updateSkinApplyState()
+}
+
+async function getSkinPreviewSource(){
+    if(skinUploadState.selectedFile != null){
+        return {
+            source: pathToFileURL(skinUploadState.selectedFile).toString(),
+            variant: getSelectedSkinVariant()
+        }
+    }
+
+    const account = getSkinTabSelectedAccount()
+    if(account == null){
+        return null
+    }
+
+    const profileSkin = await AuthManager.getMinecraftProfileSkin(account.uuid)
+    if(profileSkin?.url != null){
+        const variant = profileSkin.variant === 'SLIM' ? 'slim' : 'classic'
+        setSelectedSkinVariant(variant)
+        return {
+            source: profileSkin.url,
+            fallbackSource: `https://mc-heads.net/skin/${account.uuid}?${Date.now()}`,
+            variant
+        }
+    }
+
+    return {
+        source: `https://mc-heads.net/skin/${account.uuid}?${Date.now()}`,
+        variant: getSelectedSkinVariant()
+    }
+}
+
+async function updateSkinPreview(){
+    const canvas = document.getElementById('settingsSkinPreviewCanvas')
+    if(canvas == null){
+        return
+    }
+
+    const nonce = ++skinUploadState.previewNonce
+
+    try {
+        const preview = await getSkinPreviewSource()
+        if(nonce !== skinUploadState.previewNonce){
+            return
         }
 
-        setOverlayHandler(() => {
-            const checked = document.querySelector('input[name="skinUploadPreviewVariant"]:checked')
-            finish(checked?.value ?? 'classic')
-        })
-        setDismissHandler(() => {
-            finish(null)
-        })
-        toggleOverlay(true, true)
+        const source = preview?.source || null
+        const fallbackSource = preview?.fallbackSource || null
+        const variant = preview?.variant || getSelectedSkinVariant()
+        const skinview3d = await loadSkinview3d()
+        if(nonce !== skinUploadState.previewNonce){
+            return
+        }
 
-        loadSkinview3d().then(skinview3d => {
-            if(resolved){
-                return
-            }
-            const canvas = document.getElementById('skinUploadPreviewCanvas')
-            skinViewer = new skinview3d.SkinViewer({
+        if(skinUploadState.viewer == null){
+            skinUploadState.viewer = new skinview3d.SkinViewer({
                 canvas,
-                width: 220,
-                height: 300,
-                skin: skinUrl,
-                model: mapSkinVariantToViewerModel(initialVariant),
+                width: 280,
+                height: 360,
+                model: mapSkinVariantToViewerModel(variant),
                 enableControls: true,
                 background: 0x101010,
-                zoom: 0.82
+                zoom: 0.78,
+                pixelRatio: 1,
+                renderPaused: true
             })
-            skinViewer.autoRotate = true
-            skinViewer.autoRotateSpeed = 0.8
+            skinUploadState.viewer.autoRotate = false
+            skinUploadState.viewer.animation = null
+            bindSkinPreviewRenderEvents(canvas)
+            skinUploadState.viewer.controls?.addEventListener?.('change', renderSkinPreviewOnce)
+        }
 
-            Array.from(document.querySelectorAll('input[name="skinUploadPreviewVariant"]')).forEach(input => {
-                input.onchange = () => {
-                    skinViewer.loadSkin(skinUrl, {
-                        model: mapSkinVariantToViewerModel(input.value)
-                    })
-                }
+        if(source == null){
+            skinUploadState.viewer.loadSkin(null)
+            renderSkinPreviewOnce()
+            return
+        }
+
+        try {
+            await skinUploadState.viewer.loadSkin(source, {
+                model: mapSkinVariantToViewerModel(variant)
             })
-        }).catch(err => {
-            finish(null)
-            showSkinUploadError(err.message || Lang.queryJS('settings.authAccountSkin.failureMessage'))
-        })
+        } catch(err) {
+            if(fallbackSource == null || fallbackSource === source){
+                throw err
+            }
+            await skinUploadState.viewer.loadSkin(fallbackSource, {
+                model: mapSkinVariantToViewerModel(variant)
+            })
+        }
+        renderSkinPreviewOnce()
+    } catch(err) {
+        setSkinStatus(err.message || Lang.queryJS('settings.authAccountSkin.failureMessage'), true)
+    }
+}
+
+function updateSkinAccountOptions(preferredUuid = null){
+    const select = getSkinTabAccountSelect()
+    if(select == null){
+        return
+    }
+
+    const authAccounts = ConfigManager.getAuthAccounts()
+    const microsoftAccounts = Object.values(authAccounts).filter(acc => acc.type === 'microsoft')
+    const selectedAccount = ConfigManager.getSelectedAccount()
+    const selectedUuid = preferredUuid || selectedAccount?.uuid || microsoftAccounts[0]?.uuid || ''
+
+    select.innerHTML = microsoftAccounts.map(acc => {
+        return `<option value="${acc.uuid}" ${acc.uuid === selectedUuid ? 'selected' : ''}>${acc.displayName}</option>`
+    }).join('')
+
+    setSkinStatus(microsoftAccounts.length === 0 ? Lang.queryJS('settings.authAccountSkin.microsoftOnly') : '')
+    updateSkinApplyState()
+}
+
+function openSkinSettingsTab(uuid){
+    updateSkinAccountOptions(uuid)
+    setSkinSelectedFile(null)
+
+    const skinNavItem = document.getElementById('settingsNavSkin')
+    if(skinNavItem != null && !skinNavItem.hasAttribute('selected')){
+        settingsNavItemListener(skinNavItem)
+    } else {
+        updateSkinPreview()
+    }
+}
+
+async function selectSkinFile(){
+    const result = await remote.dialog.showOpenDialog(remote.getCurrentWindow(), {
+        title: Lang.queryJS('settings.authAccountSkin.selectDialogTitle'),
+        properties: ['openFile'],
+        filters: [
+            { name: Lang.queryJS('settings.authAccountSkin.pngFiles'), extensions: ['png'] }
+        ]
     })
+
+    if(result.canceled){
+        return
+    }
+
+    setSkinSelectedFile(result.filePaths[0])
+    setSkinStatus('')
+    await updateSkinPreview()
+}
+
+async function applySelectedSkin(){
+    const account = getSkinTabSelectedAccount()
+    const applyButton = document.getElementById('settingsSkinApply')
+
+    if(account == null){
+        setSkinStatus(Lang.queryJS('settings.authAccountSkin.microsoftOnly'), true)
+        return
+    }
+
+    if(skinUploadState.selectedFile == null){
+        setSkinStatus(Lang.queryJS('settings.authAccountSkin.noFileSelected'), true)
+        return
+    }
+
+    const previousText = applyButton.innerHTML
+    applyButton.disabled = true
+    applyButton.innerHTML = Lang.queryJS('settings.authAccountSkin.uploading')
+    setSkinStatus('')
+
+    try {
+        if(ConfigManager.getSelectedAccount()?.uuid !== account.uuid){
+            const selected = ConfigManager.setSelectedAccount(account.uuid)
+            ConfigManager.save()
+            refreshAuthAccountSelected(account.uuid)
+            updateSelectedAccount(selected)
+        }
+
+        const authValid = await AuthManager.validateSelected()
+
+        if(!authValid){
+            throw new Error(Lang.queryJS('settings.authAccountSkin.authFailed'))
+        }
+
+        const refreshedAccount = ConfigManager.getAuthAccount(account.uuid)
+        await AuthManager.uploadMinecraftSkin(refreshedAccount.uuid, skinUploadState.selectedFile, getSelectedSkinVariant())
+        refreshSkinImages(refreshedAccount)
+        setSkinSelectedFile(null)
+        await updateSkinPreview()
+        setSkinStatus(Lang.queryJS('settings.authAccountSkin.successInline'))
+        showSkinUploadSuccess()
+    } catch(err) {
+        setSkinStatus(err.message || Lang.queryJS('settings.authAccountSkin.failureMessage'), true)
+    } finally {
+        applyButton.innerHTML = previousText
+        updateSkinApplyState()
+    }
+}
+
+function prepareSkinTab(){
+    updateSkinAccountOptions()
+
+    const selectFileButton = document.getElementById('settingsSkinSelectFile')
+    if(selectFileButton != null){
+        selectFileButton.onclick = selectSkinFile
+    }
+
+    const applyButton = document.getElementById('settingsSkinApply')
+    if(applyButton != null){
+        applyButton.onclick = applySelectedSkin
+    }
+
+    const accountSelect = getSkinTabAccountSelect()
+    if(accountSelect != null){
+        accountSelect.onchange = () => {
+            setSkinSelectedFile(null)
+            setSkinStatus('')
+            updateSkinPreview()
+        }
+    }
+
+    Array.from(document.querySelectorAll('input[name="settingsSkinVariant"]')).forEach(input => {
+        input.onchange = updateSkinPreview
+    })
+
 }
 
 function refreshSkinImages(account){
@@ -858,11 +1037,7 @@ function populateAuthAccounts(){
                 <div class="settingsAuthAccountActions">
                     <button class="settingsAuthAccountSelect" ${selectedUUID === acc.uuid ? 'selected>' + Lang.queryJS('settings.authAccountPopulate.selectedAccount') : '>' + Lang.queryJS('settings.authAccountPopulate.selectAccount')}</button>
                     <div class="settingsAuthAccountWrapper">
-                        ${acc.type === 'microsoft' ? `<select class="settingsAuthAccountSkinVariant">
-                            <option value="classic">${Lang.queryJS('settings.authAccountSkin.classic')}</option>
-                            <option value="slim">${Lang.queryJS('settings.authAccountSkin.slim')}</option>
-                        </select>
-                        <button class="settingsAuthAccountSkinUpload">${Lang.queryJS('settings.authAccountSkin.upload')}</button>` : ''}
+                        ${acc.type === 'microsoft' ? `<button class="settingsAuthAccountSkinUpload">${Lang.queryJS('settings.authAccountSkin.upload')}</button>` : ''}
                         <button class="settingsAuthAccountLogOut">${Lang.queryJS('settings.authAccountPopulate.logout')}</button>
                     </div>
                 </div>
@@ -886,6 +1061,7 @@ function populateAuthAccounts(){
  */
 function prepareAccountsTab() {
     populateAuthAccounts()
+    prepareSkinTab()
     bindAuthAccountSelect()
     bindAuthAccountSkinUpload()
     bindAuthAccountLogOut()

@@ -351,6 +351,23 @@ exports.uploadMinecraftSkin = async function(uuid, skinPath, variant){
     })
 }
 
+exports.getMinecraftProfileSkin = async function(uuid){
+    const account = ConfigManager.getAuthAccount(uuid)
+
+    if(account == null || account.type !== 'microsoft'){
+        return null
+    }
+
+    const profileResponse = await MicrosoftAuth.getMCProfile(account.accessToken)
+    if(profileResponse.responseStatus !== RestResponseStatus.SUCCESS){
+        log.warn(`Unable to load Minecraft profile skin for ${uuid}.`)
+        return null
+    }
+
+    const skins = Array.isArray(profileResponse.data?.skins) ? profileResponse.data.skins : []
+    return skins.find(skin => skin.state === 'ACTIVE') || skins[0] || null
+}
+
 /**
  * Validate the selected account with Mojang's authserver. If the account is not valid,
  * we will attempt to refresh the access token and update that value. If that fails, a

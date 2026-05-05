@@ -1645,7 +1645,6 @@ input:checked + .toggleSwitchSlider:before {
     cursor: pointer;
     outline: none;
 }
-.settingsAuthAccountSkinVariant,
 .settingsAuthAccountSkinUpload {
     opacity: 0;
     margin-bottom: 6px;
@@ -1657,10 +1656,6 @@ input:checked + .toggleSwitchSlider:before {
     font-family: 'Avenir Medium';
     outline: none;
     transition: 0.25s ease;
-}
-.settingsAuthAccountSkinVariant {
-    width: 100%;
-    padding: 2px 4px;
 }
 .settingsAuthAccountSkinUpload {
     cursor: pointer;
@@ -1674,39 +1669,80 @@ input:checked + .toggleSwitchSlider:before {
     cursor: default;
     opacity: 0.65;
 }
-.settingsAuthAccount:hover .settingsAuthAccountSkinVariant,
 .settingsAuthAccount:hover .settingsAuthAccountSkinUpload {
     opacity: 1;
 }
 
-#overlayContent.skinPreviewOverlay {
-    width: 360px;
-}
-.skinUploadPreview {
+#settingsSkinContainer {
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    width: 88%;
+    min-height: 430px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(126, 126, 126, 0.57);
+    border-radius: 3px;
 }
-#skinUploadPreviewCanvas {
-    width: 220px;
-    height: 300px;
+#settingsSkinPreviewPane {
+    flex: 0 0 340px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+#settingsSkinPreviewCanvas {
+    width: 280px;
+    height: 360px;
     border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 3px;
     background: rgba(0, 0, 0, 0.35);
 }
-.skinUploadPreviewControls {
+#settingsSkinControlPane {
+    flex: 1;
     display: flex;
+    flex-direction: column;
     justify-content: center;
-    gap: 8px;
-    margin-top: 10px;
+    min-width: 230px;
+    padding: 24px 24px 24px 10px;
+    box-sizing: border-box;
 }
-.skinUploadPreviewControls label {
+.settingsSkinFieldContainer {
+    width: 100%;
+    padding: 10px 0px;
+    align-items: center;
+}
+.settingsSkinFieldContainer .settingsFieldLeft {
+    width: 72px;
+}
+.settingsSkinFieldContainer .settingsFieldRight {
+    width: 100%;
+    justify-content: flex-start;
+}
+#settingsSkinAccountSelect {
+    width: 100%;
+    max-width: 210px;
+    height: 26px;
+    color: white;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'Avenir Medium';
+    outline: none;
+}
+.settingsSkinVariantToggle {
+    display: flex;
+    width: 100%;
+    max-width: 210px;
+    gap: 8px;
+}
+.settingsSkinVariantToggle label {
+    position: relative;
+    flex: 1;
     display: flex;
     align-items: center;
-    gap: 5px;
-    min-width: 74px;
     justify-content: center;
-    padding: 4px 8px;
+    min-width: 0;
+    height: 28px;
     border: 1px solid rgba(255, 255, 255, 0.35);
     border-radius: 3px;
     background: rgba(0, 0, 0, 0.3);
@@ -1715,8 +1751,92 @@ input:checked + .toggleSwitchSlider:before {
     color: white;
     cursor: pointer;
 }
-.skinUploadPreviewControls input {
-    margin: 0;
+.settingsSkinVariantToggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.settingsSkinVariantToggle input:checked + .settingsSkinVariantLabel {
+    color: white;
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0px 0px 0px 1px rgba(255, 255, 255, 0.75);
+}
+.settingsSkinVariantLabel {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    color: rgba(255, 255, 255, 0.72);
+    white-space: nowrap;
+    transition: 0.2s ease;
+}
+#settingsSkinSelectFile,
+#settingsSkinApply {
+    color: white;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'Avenir Medium';
+    outline: none;
+    cursor: pointer;
+    transition: 0.25s ease;
+}
+#settingsSkinSelectFile {
+    flex: 0 0 86px;
+    height: 28px;
+    padding: 0px 10px;
+    white-space: nowrap;
+}
+#settingsSkinApply {
+    width: 100%;
+    max-width: 210px;
+    height: 32px;
+    padding: 0px 10px;
+    margin-top: 12px;
+}
+#settingsSkinSelectFile:hover,
+#settingsSkinSelectFile:focus,
+#settingsSkinApply:hover,
+#settingsSkinApply:focus {
+    box-shadow: 0px 0px 20px rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.15);
+}
+#settingsSkinApply:disabled {
+    cursor: default;
+    color: rgba(255, 255, 255, 0.55);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: none;
+    background: rgba(0, 0, 0, 0.25);
+}
+.settingsSkinFileRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 210px;
+    margin-top: 10px;
+}
+#settingsSkinSelectedFile {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 12px;
+    line-height: 28px;
+}
+#settingsSkinStatus {
+    min-height: 16px;
+    max-width: 210px;
+    margin-top: 10px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 12px;
+}
+#settingsSkinStatus[error] {
+    color: rgb(241, 55, 55);
 }
 .settingsAuthAccountLogOut:hover,
 .settingsAuthAccountLogOut:focus {

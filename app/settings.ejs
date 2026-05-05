@@ -7,6 +7,7 @@
             <div id="settingsNavItemsContainer">
                 <div id="settingsNavItemsContent">
                     <button class="settingsNavItem" rSc="settingsTabAccount" id="settingsNavAccount" selected><%- lang('settings.navAccount') %></button>
+                    <button class="settingsNavItem" rSc="settingsTabSkin" id="settingsNavSkin"><%- lang('settings.navSkin') %></button>
                     <button class="settingsNavItem" rSc="settingsTabMinecraft"><%- lang('settings.navMinecraft') %></button>
                     <button class="settingsNavItem" rSc="settingsTabMods"><%- lang('settings.navMods') %></button>
                     <button class="settingsNavItem" rSc="settingsTabJava"><%- lang('settings.navJava') %></button>
@@ -66,6 +67,50 @@
                 
                 <div class="settingsCurrentAccounts" id="settingsCurrentMojangAccounts">
                     <!-- Mojang auth accounts populated here. -->
+                </div>
+            </div>
+        </div>
+        <div id="settingsTabSkin" class="settingsTab" style="display: none;">
+            <div class="settingsTabHeader">
+                <span class="settingsTabHeaderText"><%- lang('settings.skinTabHeaderText') %></span>
+                <span class="settingsTabHeaderDesc"><%- lang('settings.skinTabHeaderDesc') %></span>
+            </div>
+            <div id="settingsSkinContainer">
+                <div id="settingsSkinPreviewPane">
+                    <canvas id="settingsSkinPreviewCanvas" width="280" height="360"></canvas>
+                </div>
+                <div id="settingsSkinControlPane">
+                    <div class="settingsFieldContainer settingsSkinFieldContainer">
+                        <div class="settingsFieldLeft">
+                            <span class="settingsFieldTitle"><%- lang('settings.skinAccountTitle') %></span>
+                        </div>
+                        <div class="settingsFieldRight">
+                            <select id="settingsSkinAccountSelect"></select>
+                        </div>
+                    </div>
+                    <div class="settingsFieldContainer settingsSkinFieldContainer">
+                        <div class="settingsFieldLeft">
+                            <span class="settingsFieldTitle"><%- lang('settings.skinVariantTitle') %></span>
+                        </div>
+                        <div class="settingsFieldRight">
+                            <div class="settingsSkinVariantToggle">
+                                <label>
+                                    <input type="radio" name="settingsSkinVariant" value="classic" checked>
+                                    <span class="settingsSkinVariantLabel"><%- lang('settings.skinClassic') %></span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="settingsSkinVariant" value="slim">
+                                    <span class="settingsSkinVariantLabel"><%- lang('settings.skinSlim') %></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settingsSkinFileRow">
+                        <button id="settingsSkinSelectFile"><%- lang('settings.skinSelectFile') %></button>
+                        <span id="settingsSkinSelectedFile"><%- lang('settings.skinNoFileSelected') %></span>
+                    </div>
+                    <div id="settingsSkinStatus"></div>
+                    <button id="settingsSkinApply" disabled><%- lang('settings.skinApply') %></button>
                 </div>
             </div>
         </div>
