@@ -3773,6 +3773,12 @@ input:checked + .toggleSwitchSlider:before {
     justify-content: center;
 }
 
+#overlayActionContainer[shaderloaderchoice] {
+    flex-direction: row;
+    gap: 12px;
+    width: 100%;
+}
+
 /* Overlay acknowledge button styles. */
 #overlayAcknowledge {
     background: none;
@@ -3811,6 +3817,42 @@ input:checked + .toggleSwitchSlider:before {
 }
 #overlayDismiss:active {
     color: rgba(165, 165, 165, 0.75);
+}
+
+#overlayActionContainer[shaderloaderchoice] #overlayAcknowledge,
+#overlayActionContainer[shaderloaderchoice] #overlayDismiss {
+    min-width: 110px;
+    height: 34px;
+    padding: 0px 14px;
+    border: 1px solid #ffffff;
+    border-radius: 2px;
+    background: none;
+    color: white;
+    font-family: 'Avenir Medium';
+    font-size: 13px;
+    font-weight: bold;
+    text-align: center;
+    cursor: pointer;
+    transition: 0.25s ease;
+}
+
+#overlayActionContainer[shaderloaderchoice] #overlayDismissWrapper {
+    display: flex;
+}
+
+#overlayActionContainer[shaderloaderchoice] #overlayAcknowledge:hover,
+#overlayActionContainer[shaderloaderchoice] #overlayAcknowledge:focus,
+#overlayActionContainer[shaderloaderchoice] #overlayDismiss:hover,
+#overlayActionContainer[shaderloaderchoice] #overlayDismiss:focus {
+    box-shadow: 0px 0px 10px 0px #fff;
+    color: white;
+    outline: none;
+}
+
+#overlayActionContainer[shaderloaderchoice] #overlayAcknowledge:active,
+#overlayActionContainer[shaderloaderchoice] #overlayDismiss:active {
+    border-color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.75);
 }
 
 /* * *

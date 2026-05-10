@@ -4,8 +4,10 @@
 // Requirements
 const neoForgeChildProcess     = require('child_process')
 const neoForgeFS               = require('fs-extra')
+const got                      = require('got')
 const nodePath                = require('path')
 const { URL }                 = require('url')
+const { Type: LandingDistroType } = require('helios-distribution-types')
 const {
     MojangRestAPI,
     getServerStatus
@@ -39,6 +41,7 @@ const {
 // Internal Requirements
 const LandingAuthManager      = require('./assets/js/authmanager')
 const DiscordWrapper          = require('./assets/js/discordwrapper')
+const LandingDropinModUtil    = require('./assets/js/dropinmodutil')
 const ProcessBuilder          = require('./assets/js/processbuilder')
 
 // Launch Elements
@@ -665,6 +668,495 @@ const MIN_LINGER = 5000
 const RPC_JOIN_FALLBACK_DELAY = 30000
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+const MODRINTH_API_BASE = 'https://api.modrinth.com/v2'
+const MANAGED_SHADER_FILE_PREFIX = 'stella-managed-modrinth-'
+const MANAGED_SHADER_MANIFEST = '.stella-shader-loader.json'
+const MANAGED_SHADER_DISABLED_EXT = '.disabled'
+const SHADER_LOADER_OPTIONS = {
+    iris: {
+        label: 'Iris',
+        project: 'iris'
+    },
+    optifine: {
+        label: 'OptiFine',
+        project: 'optifine'
+    }
+}
+const MODRINTH_DEPENDENCY_HINTS = {
+    // Sodium is the required Modrinth dependency for Iris and is already shipped
+    // by some Stella server distributions.
+    AANobbMI: ['sodium']
+}
+
+function getServerInstanceDir(serv) {
+    return nodePath.join(ConfigManager.getInstanceDirectory(), serv.rawServer.id)
+}
+
+function getServerModsDir(serv) {
+    return nodePath.join(getServerInstanceDir(serv), 'mods')
+}
+
+function getModrinthUserAgent() {
+    let launcherVersion = 'unknown'
+    try {
+        if(typeof remote !== 'undefined' && remote?.app?.getVersion != null) {
+            launcherVersion = remote.app.getVersion()
+        }
+    } catch(_err) {
+        // Keep the fallback version.
+    }
+    return `StellaLauncher/${launcherVersion} (https://github.com/TeamStellive/stellalauncher)`
+}
+
+function getModrinthUrl(endpoint, query = {}) {
+    const url = new URL(endpoint.startsWith('/') ? `${MODRINTH_API_BASE}${endpoint}` : `${MODRINTH_API_BASE}/${endpoint}`)
+    for(const [key, value] of Object.entries(query)) {
+        if(value != null) {
+            url.searchParams.set(key, value)
+        }
+    }
+    return url.toString()
+}
+
+async function modrinthGet(endpoint, query = {}) {
+    return got(getModrinthUrl(endpoint, query), {
+        headers: {
+            'Accept': 'application/json',
+            'User-Agent': getModrinthUserAgent()
+        },
+        timeout: {
+            request: 15000
+        }
+    }).json()
+}
+
+function getModrinthVersionQuery(minecraftVersion, loader) {
+    return {
+        game_versions: JSON.stringify([minecraftVersion]),
+        loaders: JSON.stringify([loader])
+    }
+}
+
+function getPrimaryModrinthFile(version) {
+    return version?.files?.find(file => file.primary) ?? version?.files?.[0] ?? null
+}
+
+function sanitizeManagedFileName(fileName) {
+    return fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+}
+
+function getManagedFileName(projectId, versionId, fileName) {
+    return sanitizeManagedFileName(`${MANAGED_SHADER_FILE_PREFIX}${projectId}-${versionId}-${fileName}`)
+}
+
+function getManagedManifestPath(modsDir) {
+    return nodePath.join(modsDir, MANAGED_SHADER_MANIFEST)
+}
+
+function readManagedShaderManifest(modsDir) {
+    const manifestPath = getManagedManifestPath(modsDir)
+    if(!neoForgeFS.existsSync(manifestPath)) {
+        return null
+    }
+    try {
+        return JSON.parse(neoForgeFS.readFileSync(manifestPath, 'UTF-8'))
+    } catch(err) {
+        loggerLanding.warn('Unable to read managed shader loader manifest.', err)
+        return null
+    }
+}
+
+async function isManagedShaderManifestCurrent(modsDir, choice, minecraftVersion, loader) {
+    const manifest = readManagedShaderManifest(modsDir)
+    if(manifest == null || manifest.choice !== choice || manifest.minecraftVersion !== minecraftVersion || manifest.loader !== loader) {
+        return false
+    }
+    if(!Array.isArray(manifest.entries) || manifest.entries.length === 0) {
+        return false
+    }
+    for(const entry of manifest.entries) {
+        if(entry.localName == null || entry.sha1 == null) {
+            return false
+        }
+        const localPath = nodePath.join(modsDir, entry.localName)
+        const disabledPath = `${localPath}${MANAGED_SHADER_DISABLED_EXT}`
+        const validationPath = neoForgeFS.existsSync(localPath) ? localPath : disabledPath
+        if(!await validateLocalFile(validationPath, HashAlgo.SHA1, entry.sha1)) {
+            return false
+        }
+    }
+    return true
+}
+
+function doesManagedManifestMatchPlan(modsDir, choice, minecraftVersion, loader, entries) {
+    const manifest = readManagedShaderManifest(modsDir)
+    if(manifest == null || manifest.choice !== choice || manifest.minecraftVersion !== minecraftVersion || manifest.loader !== loader) {
+        return false
+    }
+    if(!Array.isArray(manifest.entries) || manifest.entries.length !== entries.length) {
+        return false
+    }
+
+    return entries.every(entry => manifest.entries.some(manifestEntry =>
+        manifestEntry.projectId === entry.projectId
+        && manifestEntry.versionId === entry.versionId
+        && manifestEntry.localName === entry.localName
+        && manifestEntry.sha1 === entry.sha1
+    ))
+}
+
+function setManagedShaderLoaderEnabled(modsDir, enabled) {
+    if(!neoForgeFS.existsSync(modsDir)) {
+        return
+    }
+
+    const manifest = readManagedShaderManifest(modsDir)
+    const localNames = Array.isArray(manifest?.entries)
+        ? manifest.entries.map(entry => entry.localName).filter(Boolean)
+        : neoForgeFS.readdirSync(modsDir).filter(fileName => fileName.startsWith(MANAGED_SHADER_FILE_PREFIX))
+
+    for(const localName of localNames) {
+        const baseName = localName.endsWith(MANAGED_SHADER_DISABLED_EXT)
+            ? localName.substring(0, localName.length - MANAGED_SHADER_DISABLED_EXT.length)
+            : localName
+        const enabledPath = nodePath.join(modsDir, baseName)
+        const disabledPath = `${enabledPath}${MANAGED_SHADER_DISABLED_EXT}`
+
+        if(enabled) {
+            if(neoForgeFS.existsSync(disabledPath)) {
+                if(neoForgeFS.existsSync(enabledPath)) {
+                    neoForgeFS.removeSync(disabledPath)
+                } else {
+                    neoForgeFS.renameSync(disabledPath, enabledPath)
+                }
+            }
+        } else if(neoForgeFS.existsSync(enabledPath)) {
+            if(neoForgeFS.existsSync(disabledPath)) {
+                neoForgeFS.removeSync(enabledPath)
+            } else {
+                neoForgeFS.renameSync(enabledPath, disabledPath)
+            }
+        }
+    }
+}
+
+function cleanupManagedShaderLoader(modsDir) {
+    if(!neoForgeFS.existsSync(modsDir)) {
+        return
+    }
+    for(const fileName of neoForgeFS.readdirSync(modsDir)) {
+        if(fileName.startsWith(MANAGED_SHADER_FILE_PREFIX)) {
+            neoForgeFS.removeSync(nodePath.join(modsDir, fileName))
+        }
+    }
+    neoForgeFS.removeSync(getManagedManifestPath(modsDir))
+}
+
+function writeManagedShaderManifest(modsDir, choice, minecraftVersion, loader, entries) {
+    neoForgeFS.writeFileSync(
+        getManagedManifestPath(modsDir),
+        JSON.stringify({
+            choice,
+            minecraftVersion,
+            loader,
+            updatedAt: new Date().toISOString(),
+            entries
+        }, null, 4),
+        'UTF-8'
+    )
+}
+
+function safeGetVersionlessMavenIdentifier(mdl) {
+    if(typeof mdl.getVersionlessMavenIdentifier !== 'function') {
+        return null
+    }
+    try {
+        return mdl.getVersionlessMavenIdentifier()
+    } catch(_err) {
+        return null
+    }
+}
+
+function safeGetRequired(mdl) {
+    if(typeof mdl.getRequired !== 'function') {
+        return null
+    }
+    try {
+        return mdl.getRequired()
+    } catch(_err) {
+        return null
+    }
+}
+
+function moduleHasOwnHint(mdl, hints) {
+    const raw = mdl.rawModule ?? {}
+    const haystack = [
+        raw.id,
+        raw.name,
+        raw.artifact?.url,
+        safeGetVersionlessMavenIdentifier(mdl)
+    ].filter(Boolean).join(' ').toLowerCase()
+
+    return hints.some(hint => haystack.includes(hint))
+}
+
+function isModuleEnabledForLaunch(mdl, modCfg) {
+    const mdlId = safeGetVersionlessMavenIdentifier(mdl)
+    const required = safeGetRequired(mdl)
+    return ProcessBuilder.isModEnabled(mdlId != null ? modCfg?.[mdlId] : null, required)
+}
+
+function isKnownDependencyProvidedByDistribution(projectId, serv) {
+    const hints = MODRINTH_DEPENDENCY_HINTS[projectId]
+    if(hints == null) {
+        return false
+    }
+    const modCfg = ConfigManager.getModConfiguration(serv.rawServer.id)?.mods ?? {}
+    return serv.modules.some(mdl => isActiveDistributionModuleWithHint(mdl, hints, modCfg))
+}
+
+function isActiveDistributionModuleWithHint(mdl, hints, modCfg) {
+    if(!isModuleEnabledForLaunch(mdl, modCfg)) {
+        return false
+    }
+
+    if(moduleHasOwnHint(mdl, hints)) {
+        return true
+    }
+
+    const mdlId = safeGetVersionlessMavenIdentifier(mdl)
+    const childCfg = mdlId != null ? modCfg?.[mdlId]?.mods ?? {} : modCfg
+    return (mdl.subModules ?? []).some(subModule => isActiveDistributionModuleWithHint(subModule, hints, childCfg))
+}
+
+function resolveServerModrinthLoader(serv) {
+    if(serv.modules.some(mdl => mdl.rawModule.type === LandingDistroType.Fabric)) {
+        return 'fabric'
+    }
+
+    const forgeHosted = serv.modules.find(mdl => mdl.rawModule.type === LandingDistroType.ForgeHosted)
+    if(forgeHosted != null) {
+        const raw = forgeHosted.rawModule ?? {}
+        const identity = [
+            raw.id,
+            raw.name,
+            safeGetVersionlessMavenIdentifier(forgeHosted)
+        ].filter(Boolean).join(' ').toLowerCase()
+        return identity.includes('neoforge') || identity.includes('neoforged') ? 'neoforge' : 'forge'
+    }
+
+    return null
+}
+
+async function resolveModrinthProjectVersion(project, displayName, minecraftVersion, loader) {
+    let versions
+    try {
+        versions = await modrinthGet(`/project/${encodeURIComponent(project)}/version`, getModrinthVersionQuery(minecraftVersion, loader))
+    } catch(err) {
+        if(err.response?.statusCode === 404) {
+            throw new Error(Lang.queryJS('landing.shaderLoader.projectNotFound', { name: displayName }))
+        }
+        throw err
+    }
+
+    if(!Array.isArray(versions) || versions.length === 0) {
+        throw new Error(Lang.queryJS('landing.shaderLoader.noCompatibleVersion', {
+            name: displayName,
+            minecraftVersion,
+            loader
+        }))
+    }
+
+    return versions.find(version => version.version_type === 'release' && getPrimaryModrinthFile(version) != null)
+        ?? versions.find(version => getPrimaryModrinthFile(version) != null)
+        ?? versions[0]
+}
+
+async function resolveModrinthVersionForInstall(ref, minecraftVersion, loader) {
+    if(ref.versionId != null) {
+        return modrinthGet(`/version/${encodeURIComponent(ref.versionId)}`)
+    }
+
+    return resolveModrinthProjectVersion(ref.project, ref.displayName, minecraftVersion, loader)
+}
+
+async function collectModrinthInstallPlan(ref, serv, minecraftVersion, loader, state) {
+    const version = await resolveModrinthVersionForInstall(ref, minecraftVersion, loader)
+    if(state.seenVersions.has(version.id)) {
+        return
+    }
+    state.seenVersions.add(version.id)
+
+    for(const dependency of version.dependencies ?? []) {
+        if(dependency.dependency_type !== 'required') {
+            continue
+        }
+        if(dependency.project_id != null && isKnownDependencyProvidedByDistribution(dependency.project_id, serv)) {
+            state.logger.info(`Skipping Modrinth dependency ${dependency.project_id}; distribution already provides it.`)
+            continue
+        }
+        await collectModrinthInstallPlan({
+            project: dependency.project_id,
+            versionId: dependency.version_id,
+            displayName: dependency.project_id ?? dependency.version_id
+        }, serv, minecraftVersion, loader, state)
+    }
+
+    const file = getPrimaryModrinthFile(version)
+    if(file == null || file.url == null) {
+        throw new Error(Lang.queryJS('landing.shaderLoader.noPrimaryFile', { name: version.name ?? version.id }))
+    }
+    if(file.hashes?.sha1 == null) {
+        throw new Error(Lang.queryJS('landing.shaderLoader.noSha1', { name: file.filename ?? version.name ?? version.id }))
+    }
+
+    state.entries.push({
+        projectId: version.project_id,
+        versionId: version.id,
+        versionName: version.name,
+        fileName: file.filename,
+        localName: getManagedFileName(version.project_id, version.id, file.filename),
+        url: file.url,
+        size: file.size ?? 0,
+        sha1: file.hashes.sha1
+    })
+}
+
+async function buildModrinthInstallPlan(choice, serv, minecraftVersion, loader, loggerLaunchSuite) {
+    const shaderLoader = SHADER_LOADER_OPTIONS[choice]
+    const state = {
+        entries: [],
+        seenVersions: new Set(),
+        logger: loggerLaunchSuite
+    }
+
+    await collectModrinthInstallPlan({
+        project: shaderLoader.project,
+        displayName: shaderLoader.label
+    }, serv, minecraftVersion, loader, state)
+
+    return state.entries
+}
+
+async function downloadModrinthInstallPlan(entries, modsDir) {
+    const assets = entries.map(entry => ({
+        id: entry.localName,
+        hash: entry.sha1,
+        algo: HashAlgo.SHA1,
+        size: entry.size,
+        url: entry.url,
+        path: nodePath.join(modsDir, entry.localName)
+    }))
+
+    const expectedTotalSize = getExpectedDownloadSize(assets)
+    await downloadQueue(assets, received => {
+        const percent = expectedTotalSize > 0 ? Math.trunc((received / expectedTotalSize) * 100) : 0
+        setDownloadPercentage(percent)
+    })
+    setDownloadPercentage(100)
+
+    for(const asset of assets) {
+        if(!await validateLocalFile(asset.path, asset.algo, asset.hash)) {
+            throw new Error(Lang.queryJS('landing.shaderLoader.validationFailed', { name: asset.id }))
+        }
+    }
+}
+
+async function ensureModrinthShaderLoader(choice, serv, minecraftVersion, loader, loggerLaunchSuite) {
+    const modsDir = getServerModsDir(serv)
+    neoForgeFS.ensureDirSync(modsDir)
+
+    setLaunchDetails(Lang.queryJS('landing.shaderLoader.resolving'))
+    const entries = await buildModrinthInstallPlan(choice, serv, minecraftVersion, loader, loggerLaunchSuite)
+    if(entries.length === 0) {
+        throw new Error(Lang.queryJS('landing.shaderLoader.emptyPlan'))
+    }
+
+    if(doesManagedManifestMatchPlan(modsDir, choice, minecraftVersion, loader, entries)
+        && await isManagedShaderManifestCurrent(modsDir, choice, minecraftVersion, loader)) {
+        setManagedShaderLoaderEnabled(modsDir, true)
+        loggerLaunchSuite.info(`Managed shader loader ${choice} is already installed for ${minecraftVersion}/${loader}.`)
+        return
+    }
+
+    cleanupManagedShaderLoader(modsDir)
+    setLaunchDetails(Lang.queryJS('landing.shaderLoader.downloading'))
+    setDownloadPercentage(0)
+    await downloadModrinthInstallPlan(entries, modsDir)
+    writeManagedShaderManifest(modsDir, choice, minecraftVersion, loader, entries)
+}
+
+function promptShaderLoaderChoice(shaderpack) {
+    return new Promise(resolve => {
+        const overlayActionContainer = document.getElementById('overlayActionContainer')
+        setOverlayContent(
+            Lang.queryJS('landing.shaderLoader.choiceTitle'),
+            Lang.queryJS('landing.shaderLoader.choiceText', { shaderpack }),
+            SHADER_LOADER_OPTIONS.iris.label,
+            SHADER_LOADER_OPTIONS.optifine.label
+        )
+        setOverlayHandler(() => {
+            overlayActionContainer.removeAttribute('shaderloaderchoice')
+            toggleOverlay(false)
+            resolve('iris')
+        })
+        setDismissHandler(() => {
+            overlayActionContainer.removeAttribute('shaderloaderchoice')
+            toggleOverlay(false)
+            resolve('optifine')
+        })
+        overlayActionContainer.setAttribute('shaderloaderchoice', '')
+        toggleOverlay(true, true)
+    })
+}
+
+async function ensureShaderLoaderForLaunch(serv, loggerLaunchSuite) {
+    const modsDir = getServerModsDir(serv)
+    const shaderpack = LandingDropinModUtil.getEnabledShaderpack(getServerInstanceDir(serv))
+    if(shaderpack == null || shaderpack === 'OFF') {
+        setManagedShaderLoaderEnabled(modsDir, false)
+        loggerLaunchSuite.info('No shaderpack enabled. Skipping shader loader installation.')
+        return true
+    }
+
+    const minecraftVersion = serv.rawServer.minecraftVersion
+    const loader = resolveServerModrinthLoader(serv)
+
+    if(loader == null) {
+        showLaunchFailure(
+            Lang.queryJS('landing.shaderLoader.installFailedTitle'),
+            Lang.queryJS('landing.shaderLoader.unsupportedLoader', { minecraftVersion })
+        )
+        return false
+    }
+
+    try {
+        const manifest = readManagedShaderManifest(modsDir)
+        if(manifest?.choice != null && SHADER_LOADER_OPTIONS[manifest.choice] != null) {
+            toggleLaunchArea(true)
+            setLaunchPercentage(0)
+            await ensureModrinthShaderLoader(manifest.choice, serv, minecraftVersion, loader, loggerLaunchSuite)
+            loggerLaunchSuite.info(`Prepared managed shader loader ${manifest.choice} for ${minecraftVersion}/${loader}.`)
+            return true
+        }
+
+        const choice = await promptShaderLoaderChoice(shaderpack)
+        toggleLaunchArea(true)
+        setLaunchPercentage(0)
+        await ensureModrinthShaderLoader(choice, serv, minecraftVersion, loader, loggerLaunchSuite)
+        setLaunchDetails(Lang.queryJS('landing.shaderLoader.installed'))
+        return true
+    } catch(err) {
+        loggerLaunchSuite.error('Failed to prepare shader loader.', err)
+        remote.getCurrentWindow().setProgressBar(-1)
+        showLaunchFailure(
+            Lang.queryJS('landing.shaderLoader.installFailedTitle'),
+            err.message || Lang.queryJS('landing.dlAsync.seeConsoleForDetails')
+        )
+        return false
+    }
+}
+
 async function dlAsync(login = true) {
 
     // Login parameter is temporary for debug purposes. Allows testing the validation/downloads without
@@ -692,6 +1184,10 @@ async function dlAsync(login = true) {
             loggerLanding.error('You must be logged into an account.')
             return
         }
+    }
+
+    if(!await ensureShaderLoaderForLaunch(serv, loggerLaunchSuite)) {
+        return
     }
 
     setLaunchDetails(Lang.queryJS('landing.dlAsync.pleaseWait'))
