@@ -101,7 +101,7 @@ index 922cd1a..ca915f2 100644
      if (error instanceof got_1.RequestError) {
          // error.name === 'RequestError' means server did not respond.
 diff --git a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js b/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
-index f09b6b4..c024737 100644
+index f09b6b4..be74693 100644
 --- a/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
 +++ b/node_modules/helios-core/dist/dl/distribution/DistributionIndexProcessor.js
 @@ -46,14 +46,19 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
@@ -146,7 +146,16 @@ index f09b6b4..c024737 100644
      async loadModLoaderVersionJson() {
          const server = this.distribution.getServerById(this.serverId);
          if (server == null) {
-@@ -76,7 +91,9 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+@@ -69,14 +84,17 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+         }
+         const modLoaderModule = server.modules.find(({ rawModule: { type } }) => type === helios_distribution_types_1.Type.ForgeHosted || type === helios_distribution_types_1.Type.Forge || type === helios_distribution_types_1.Type.Fabric);
+         if (modLoaderModule == null) {
+-            throw new AssetGuardError_1.AssetGuardError('No mod loader found!');
++            DistributionIndexProcessor.logger.info(`Server ${this.serverId} does not declare a mod loader. Using vanilla version manifest.`);
++            return null;
+         }
+         if (modLoaderModule.rawModule.type === helios_distribution_types_1.Type.Fabric
+             || DistributionIndexProcessor.isForgeGradle3(server.rawServer.minecraftVersion, modLoaderModule.getMavenComponents().version)) {
              return await this.loadVersionManifest(modLoaderModule);
          }
          else {
@@ -157,7 +166,7 @@ index f09b6b4..c024737 100644
              try {
                  const data = JSON.parse((await zip.entryData('version.json')).toString('utf8'));
                  const writePath = (0, FileUtils_1.getVersionJsonPath)(this.commonDir, data.id);
-@@ -89,12 +106,24 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
+@@ -89,12 +107,24 @@ class DistributionIndexProcessor extends IndexProcessor_1.IndexProcessor {
              }
          }
      }

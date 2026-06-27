@@ -696,6 +696,32 @@ function getServerModsDir(serv) {
     return nodePath.join(getServerInstanceDir(serv), 'mods')
 }
 
+function areDropinModsAllowedForLaunch(serv) {
+    const raw = serv?.rawServer ?? {}
+    return raw.allowDropinMods !== false
+        && raw.dropinMods?.enabled !== false
+        && raw.features?.dropinMods !== false
+}
+
+async function enforceDropinModPolicy(serv, loggerLaunchSuite) {
+    if(areDropinModsAllowedForLaunch(serv)) {
+        return
+    }
+
+    const modsDir = getServerModsDir(serv)
+    const minecraftVersion = serv.rawServer.minecraftVersion
+    const dropinMods = LandingDropinModUtil.scanForDropinMods(modsDir, minecraftVersion)
+    for(const dropin of dropinMods) {
+        if(dropin.fullName.startsWith(MANAGED_SHADER_FILE_PREFIX)
+            || dropin.fullName.includes(`${nodePath.sep}${MANAGED_SHADER_FILE_PREFIX}`)
+            || dropin.disabled) {
+            continue
+        }
+        await LandingDropinModUtil.toggleDropinMod(modsDir, dropin.fullName, false)
+        loggerLaunchSuite.info(`Disabled drop-in mod blocked by distribution policy: ${dropin.fullName}`)
+    }
+}
+
 function getModrinthUserAgent() {
     let launcherVersion = 'unknown'
     try {
@@ -1189,6 +1215,7 @@ async function dlAsync(login = true) {
     if(!await ensureShaderLoaderForLaunch(serv, loggerLaunchSuite)) {
         return
     }
+    await enforceDropinModPolicy(serv, loggerLaunchSuite)
 
     setLaunchDetails(Lang.queryJS('landing.dlAsync.pleaseWait'))
     toggleLaunchArea(true)
@@ -1267,8 +1294,12 @@ async function dlAsync(login = true) {
     let modLoaderData
     try {
         modLoaderData = await distributionIndexProcessor.loadModLoaderVersionJson(serv)
-        await ensureModLoaderLibraries(modLoaderData, loggerLaunchSuite)
-        await ensureNeoForgeClientInstall(modLoaderData, serv, loggerLaunchSuite)
+        if(modLoaderData != null) {
+            await ensureModLoaderLibraries(modLoaderData, loggerLaunchSuite)
+            await ensureNeoForgeClientInstall(modLoaderData, serv, loggerLaunchSuite)
+        } else {
+            loggerLaunchSuite.info('No mod loader module declared; preparing vanilla launch.')
+        }
     } catch(err) {
         loggerLaunchSuite.error('Error during mod loader library preparation.', err)
         remote.getCurrentWindow().setProgressBar(-1)

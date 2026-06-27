@@ -434,10 +434,12 @@ class ProcessBuilder {
         args.push('-Djava.library.path=' + tempNativePath)
 
         // Main Java Class
-        args.push(this.modManifest.mainClass)
+        args.push(this.modManifest?.mainClass ?? this.vanillaManifest.mainClass)
 
         // Forge Arguments
-        args = args.concat(this._resolveForgeArgs())
+        if(this.modManifest != null) {
+            args = args.concat(this._resolveForgeArgs())
+        }
 
         return args
     }
@@ -462,7 +464,7 @@ class ProcessBuilder {
         // Debug securejarhandler
         // args.push('-Dbsl.debug=true')
 
-        if(this.modManifest.arguments.jvm != null) {
+        if(this.modManifest?.arguments?.jvm != null) {
             for(const argStr of this.modManifest.arguments.jvm) {
                 args.push(argStr
                     .replaceAll('${library_directory}', this._sanitizeLibraryPath(this.libPath))
@@ -485,7 +487,7 @@ class ProcessBuilder {
         args = args.concat(this._constructStellaJvmArguments())
 
         // Main Java Class
-        args.push(this.modManifest.mainClass)
+        args.push(this.modManifest?.mainClass ?? this.vanillaManifest.mainClass)
 
         // Vanilla Arguments
         args = args.concat(this.vanillaManifest.arguments.game)
@@ -606,7 +608,7 @@ class ProcessBuilder {
 
 
         // Forge Specific Arguments
-        args = args.concat(this.modManifest.arguments.game)
+        args = args.concat(this.modManifest?.arguments?.game ?? [])
 
         // Filter null values
         args = args.filter(arg => {
@@ -622,6 +624,9 @@ class ProcessBuilder {
      * @returns {Array.<string>} An array containing the arguments required by forge.
      */
     _resolveForgeArgs(){
+        if(this.modManifest == null) {
+            return []
+        }
         const mcArgs = this.modManifest.minecraftArguments.split(' ')
         const argDiscovery = /\${*(.*)}/
 
@@ -758,7 +763,7 @@ class ProcessBuilder {
     classpathArg(mods, tempNativePath){
         let cpArgs = []
 
-        if(!mcVersionAtLeast('1.17', this.server.rawServer.minecraftVersion) || this.usingFabricLoader) {
+        if(this.modManifest == null || !mcVersionAtLeast('1.17', this.server.rawServer.minecraftVersion) || this.usingFabricLoader) {
             // Add the version.jar to the classpath.
             // Must not be added to the classpath for Forge 1.17+.
             const version = this.vanillaManifest.id
@@ -832,6 +837,9 @@ class ProcessBuilder {
 
     _resolveModLoaderLibraries(){
         const libs = {}
+        if(this.modManifest == null) {
+            return libs
+        }
 
         for(const lib of this.modManifest.libraries ?? []){
             if(!isLibraryCompatible(lib.rules, lib.natives) || lib.natives != null){

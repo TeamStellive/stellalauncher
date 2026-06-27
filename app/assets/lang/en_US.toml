@@ -300,6 +300,7 @@ fileMissing = "The selected skin file could not be found."
 okButton = "OK"
 
 [js.settings.dropinMods]
+disabledByServer = "This server does not allow user-added mods."
 removeButton = "Remove"
 deleteFailedTitle = "Failed to Delete<br>Drop-in Mod {fullName}"
 deleteFailedMessage = "Make sure the file is not in use and try again."

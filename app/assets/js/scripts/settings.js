@@ -1091,6 +1091,13 @@ document.getElementById('settingsGameHeight').addEventListener('keydown', (e) =>
 
 const settingsModsContainer = document.getElementById('settingsModsContainer')
 
+function areDropinModsAllowed(serv) {
+    const raw = serv?.rawServer ?? {}
+    return raw.allowDropinMods !== false
+        && raw.dropinMods?.enabled !== false
+        && raw.features?.dropinMods !== false
+}
+
 /**
  * Resolve and update the mods on the UI.
  */
@@ -1242,7 +1249,27 @@ let CACHE_DROPIN_MODS
 async function resolveDropinModsForUI(){
     const serv = (await DistroAPI.getDistribution()).getServerById(ConfigManager.getSelectedServer())
     CACHE_SETTINGS_MODS_DIR = path.join(ConfigManager.getInstanceDirectory(), serv.rawServer.id, 'mods')
+
+    if(!areDropinModsAllowed(serv)) {
+        CACHE_DROPIN_MODS = []
+        document.getElementById('settingsDropinModsContent').innerHTML = `<div class="settingsBaseMod settingsDropinMod">
+                    <div class="settingsModContent">
+                        <div class="settingsModMainWrapper">
+                            <div class="settingsModStatus"></div>
+                            <div class="settingsModDetails">
+                                <span class="settingsModName">${Lang.queryJS('settings.dropinMods.disabledByServer')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>`
+        const fsBtn = document.getElementById('settingsDropinFileSystemButton')
+        fsBtn.disabled = true
+        fsBtn.removeAttribute('drag')
+        return
+    }
+
     CACHE_DROPIN_MODS = DropinModUtil.scanForDropinMods(CACHE_SETTINGS_MODS_DIR, serv.rawServer.minecraftVersion)
+    document.getElementById('settingsDropinFileSystemButton').disabled = false
 
     let dropinMods = ''
 
@@ -1300,10 +1327,17 @@ function bindDropinModsRemoveButton(){
 function bindDropinModFileSystemButton(){
     const fsBtn = document.getElementById('settingsDropinFileSystemButton')
     fsBtn.onclick = () => {
+        if(fsBtn.disabled) {
+            return
+        }
         DropinModUtil.validateDir(CACHE_SETTINGS_MODS_DIR)
         shell.openPath(CACHE_SETTINGS_MODS_DIR)
     }
     fsBtn.ondragenter = e => {
+        if(fsBtn.disabled) {
+            e.preventDefault()
+            return
+        }
         e.dataTransfer.dropEffect = 'move'
         fsBtn.setAttribute('drag', '')
         e.preventDefault()
@@ -1318,6 +1352,9 @@ function bindDropinModFileSystemButton(){
     fsBtn.ondrop = async e => {
         fsBtn.removeAttribute('drag')
         e.preventDefault()
+        if(fsBtn.disabled) {
+            return
+        }
 
         DropinModUtil.addDropinMods(e.dataTransfer.files, CACHE_SETTINGS_MODS_DIR)
         await reloadDropinMods()
